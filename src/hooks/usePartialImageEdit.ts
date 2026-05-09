@@ -473,6 +473,7 @@ export function usePartialImageEdit({
       session,
       pollImageEditJob,
       setImages,
+      setSelectedImages,
       targetImage,
     ]
   );
