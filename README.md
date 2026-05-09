@@ -4,32 +4,30 @@
 </div>
 
 <p style="padding-top: 20px">
-  A canvas to explore AI image models (open-source, BYOK).
-</p>
-
-<p>
-  <b>Try it</b> at <a href="https://koubou.app/">koubou.app</a>
+  A multi-tenant GPT-Image-2 workbench with server-managed model credentials.
 </p>
 
 ![Koubou Demo](./demo_frame.png)
-
-> **Note:** Google requires billing enabled to use Nano Banana via API. [Learn More](https://ai.google.dev/gemini-api/docs/billing)
 
 ---
 
 ## How to Use it
 
+- **Login:** Set the first admin account through environment variables.
+- **Admin:** Create users, inspect usage, and configure the GPT-Image-2 API base URL and key.
 - **Image Generation:** Just type any prompt in the text and submit.
 - **Image Editing:** Select one or more images, then type your prompt and submit.
+- **Projects:** Canvas state, uploads, generated images, and usage records are saved to SQLite and local storage.
 
 ---
 
-## V1 Features
+## Features
 
-###### (09/14/25)
-
-- [x] Text-to-Image generation
-- [x] Image-to-Image editing
+- [x] Multi-tenant login with admin-managed users
+- [x] Server-side GPT-Image-2 generations and edits
+- [x] Encrypted model API key storage
+- [x] Admin usage dashboard
+- [x] Persisted projects, canvas state, uploads, and generated images
 - [x] Image upload & clipboard paste
 - [x] Image download (right-click)
 - [x] Infinite Canvas w/ pan & zoom
@@ -39,22 +37,10 @@
 
 ---
 
-## V2 Roadmap
-
-- [ ] Support for more models/services (OpenAI, Replicate, fal.ai)
-- [ ] Bring-to-Front/Back
-- [ ] Prompt history
-- [ ] Improve experience for mobile devices
-- [ ] Add "examples" section, with pre-defined prompts
-- [ ] Add tests
-- [ ] TBD
-
----
-
 ## Stack
 
-- **Bun**: A fast all-in-one JavaScript runtime.
-- **Vite**: A next-generation frontend tooling.
+- **Next.js**: Full-stack React app router and API routes.
+- **Prisma + SQLite**: Local database for users, sessions, projects, assets, and usage.
 - **React**: A JavaScript library for building user interfaces.
 - **TypeScript**: A strongly typed superset of JavaScript.
 - **Shadcn UI**: A collection of re-usable components built using Radix UI and Tailwind CSS.
@@ -79,13 +65,38 @@ To get this project up and running on your local machine, follow these steps:
     bun install
     ```
 
-3.  **Start the development server:**
+3.  **Configure environment:**
 
     ```bash
-    bun dev
+    cp .env.example .env
     ```
 
-    The application will be accessible at `http://localhost:5173` (or another port if 5173 is in use).
+    Fill at least:
+
+    ```dotenv
+    ADMIN_USERNAME=admin
+    ADMIN_PASSWORD=change-me
+    SESSION_SECRET=replace-with-a-long-random-secret
+    MODEL_CONFIG_ENCRYPTION_KEY=replace-with-another-long-random-secret
+    DATABASE_URL=file:./data/koubou.db
+    APP_STORAGE_DIR=./data/storage
+    ```
+
+    You can either set `GPT_IMAGE_2_BASE_URL` and `BASE_URL_API_KEY` in `.env`, or configure them later from the admin panel.
+
+4.  **Create/update the local database:**
+
+    ```bash
+    bun run db:push
+    ```
+
+5.  **Start the development server:**
+
+    ```bash
+    bun run dev
+    ```
+
+    The application will be accessible at `http://localhost:3000`.
 
 ---
 

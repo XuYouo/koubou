@@ -1,30 +1,29 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import type { CanvasImageData } from '@/lib/types';
-import { generateId, makePlaceholderSVGDataUrl, dataUrlToBase64AndMime } from '@/lib/utils';
-import { BillingErrorToast } from '@/components/canvas/BillingErrorToast';
 
-export function useGeneration(apiKey: string, setConfigOpen: (open: boolean) => void, images: CanvasImageData[], setImages: (images: CanvasImageData[] | ((prev: CanvasImageData[]) => CanvasImageData[])) => void, getCurrentCenterPosition: () => { x: number; y: number }) {
+import type { CanvasImageData } from "@/lib/types";
+import type { ImageSettings } from "@/lib/image-options";
+import { generateId, makePlaceholderSVGDataUrl } from "@/lib/utils";
+
+export function useGeneration(
+  projectId: string | null,
+  setConfigOpen: (open: boolean) => void,
+  images: CanvasImageData[],
+  setImages: (
+    images: CanvasImageData[] | ((prev: CanvasImageData[]) => CanvasImageData[])
+  ) => void,
+  getCurrentCenterPosition: () => { x: number; y: number },
+  settings: ImageSettings
+) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [shouldBlur, setShouldBlur] = useState(false);
   const generationMapRef = useRef<Record<string, string | number>>({});
 
-  const aiClient = useMemo(() => {
-    if (!apiKey) return null;
-    try {
-      return new GoogleGenAI({ apiKey });
-    } catch (err) {
-      console.error("Failed to construct GoogleGenAI client:", err);
-      return null;
-    }
-  }, [apiKey]);
-
   const callGenerateImage = useCallback(
     async (prompt: string, selectedIds: Set<string | number>) => {
-      if (!aiClient) {
+      if (!projectId) {
         setConfigOpen(true);
-        console.warn("API key missing. Opened configuration.");
+        toast.error("Create or select a project before generating.");
         return;
       }
 
@@ -33,7 +32,6 @@ export function useGeneration(apiKey: string, setConfigOpen: (open: boolean) => 
 
       const placeholderId = generateId("placeholder");
       const placeholderSrc = makePlaceholderSVGDataUrl(500, 500);
-
       const center = getCurrentCenterPosition();
       const placeholderImage: CanvasImageData = {
         id: placeholderId,
@@ -52,73 +50,41 @@ export function useGeneration(apiKey: string, setConfigOpen: (open: boolean) => 
       generationMapRef.current[requestId] = placeholderId;
 
       try {
-        let contents: any;
-        if (selectedIds && selectedIds.size > 0) {
-          const textPart = { text: prompt };
-          const inlineParts: any[] = [];
+        const selectedAssetIds = Array.from(selectedIds)
+          .map((id) => images.find((image) => image.id === id)?.assetId)
+          .filter((assetId): assetId is string => Boolean(assetId));
 
-          for (const id of selectedIds) {
-            const srcImage = images.find((im) => im.id === id);
-            if (!srcImage) continue;
-            const parsed = dataUrlToBase64AndMime(srcImage.src);
-            if (!parsed) {
-              console.warn(
-                "Skipping selected image - not a base64 data URL",
-                id
-              );
-              continue;
-            }
-            inlineParts.push({
-              inlineData: {
-                mimeType: parsed.mimeType,
-                data: parsed.base64,
-              },
-            });
-          }
-
-          contents = [textPart, ...inlineParts];
-        } else {
-          contents = { text: prompt };
-        }
-
-        const modelName = "gemini-2.5-flash-image-preview";
-        const response = await aiClient.models.generateContent({
-          model: modelName,
-          contents,
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            prompt,
+            selectedAssetIds,
+            size: settings.size,
+            quality: settings.quality,
+            outputFormat: settings.outputFormat,
+          }),
         });
 
-        const candidates = (response as any)?.candidates || [];
-        if (
-          !candidates ||
-          candidates.length === 0 ||
-          !candidates[0]?.content?.parts ||
-          candidates[0].content.parts.length === 0
-        ) {
-          console.warn("No content returned from model", response);
-          return;
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(body?.error || "Generation failed");
         }
 
-        const parts = candidates[0].content.parts;
-        const imagePart = parts.find(
-          (p: any) => p.inlineData && p.inlineData.data
-        );
-        if (!imagePart) {
-          console.warn("No inlineData image part in response", parts);
-          return;
+        const asset = body?.asset;
+        if (!asset?.url || !asset?.id) {
+          throw new Error("Generation response did not include an image");
         }
 
-        const returnedBase64 = imagePart.inlineData.data;
-        const returnedMime = imagePart.inlineData.mimeType || "image/png";
-
-        const dataUrl = `data:${returnedMime};base64,${returnedBase64}`;
-
+        const dataUrl = `${asset.url}?v=${Date.now()}`;
         const placeholderImageId = generationMapRef.current[requestId];
 
         const img = new Image();
         img.onload = () => {
           const aspectRatio = img.width / img.height;
-          let width, height;
           const maxSize = 500;
+          let width, height;
 
           if (img.width > img.height) {
             width = maxSize;
@@ -134,6 +100,7 @@ export function useGeneration(apiKey: string, setConfigOpen: (open: boolean) => 
                 imgObj.id === placeholderImageId
                   ? {
                       ...imgObj,
+                      assetId: asset.id,
                       src: dataUrl,
                       width,
                       height,
@@ -156,24 +123,28 @@ export function useGeneration(apiKey: string, setConfigOpen: (open: boolean) => 
           }, 500);
         };
 
-        img.onerror = (err) => {
-          console.error("Failed to load returned image", err);
-          setIsGenerating(false);
-          setShouldBlur(false);
+        img.onerror = () => {
+          throw new Error("Failed to load generated image");
         };
         img.src = dataUrl;
       } catch (err) {
-        console.error("Generation error:", err);
         const placeholderImageId = generationMapRef.current[requestId];
-        setImages((prev) => prev.filter(img => img.id !== placeholderImageId));
-        if (err instanceof Error && err.message.includes("429")) {
-          toast.error(BillingErrorToast());
-        }
+        setImages((prev) =>
+          prev.filter((img) => img.id !== placeholderImageId)
+        );
+        toast.error(err instanceof Error ? err.message : "Generation failed");
         setIsGenerating(false);
         setShouldBlur(false);
       }
     },
-    [aiClient, images, getCurrentCenterPosition, setConfigOpen, setImages]
+    [
+      projectId,
+      settings,
+      images,
+      getCurrentCenterPosition,
+      setConfigOpen,
+      setImages,
+    ]
   );
 
   return { isGenerating, shouldBlur, callGenerateImage };

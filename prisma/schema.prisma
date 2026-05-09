@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AssetType {
+  UPLOAD
+  GENERATED
+}
+
+enum GenerationOperation {
+  GENERATION
+  EDIT
+}
+
+enum GenerationStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model User {
+  id             String          @id @default(cuid())
+  username       String          @unique
+  passwordHash   String
+  role           UserRole        @default(USER)
+  status         UserStatus      @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  sessions       Session[]
+  projects       Project[]
+  assets         Asset[]
+  generationJobs GenerationJob[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ModelConfig {
+  id              String          @id @default(cuid())
+  provider        String          @default("openai-compatible")
+  model           String          @default("gpt-image-2")
+  baseUrl         String
+  encryptedApiKey String
+  enabled         Boolean         @default(true)
+  defaultOptions  String          @default("{\"size\":\"1024x1024\",\"quality\":\"auto\",\"outputFormat\":\"png\"}")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  generationJobs  GenerationJob[]
+}
+
+model Project {
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  canvasJson String          @default("{\"images\":[]}")
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  assets     Asset[]
+  jobs       GenerationJob[]
+
+  @@index([userId])
+}
+
+model Asset {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type           AssetType
+  mime           String
+  width          Int?
+  height         Int?
+  storagePath    String          @unique
+  createdAt      DateTime        @default(now())
+  generationJobs GenerationJob[]
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model GenerationJob {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  modelConfigId  String
+  modelConfig    ModelConfig         @relation(fields: [modelConfigId], references: [id])
+  prompt         String
+  operation      GenerationOperation
+  status         GenerationStatus
+  size           String
+  quality        String
+  outputFormat   String
+  outputAssetId  String?
+  outputAsset    Asset?              @relation(fields: [outputAssetId], references: [id])
+  error          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+}

@@ -41,7 +41,7 @@ export function useCanvas(
     hideContextMenu();
   };
 
-  const handleMouseMove = (e: any) => {
+  const handleMouseMove = () => {
     if (!isSelecting || tool !== "mouse") return;
 
     const pos = getPointerPosition();

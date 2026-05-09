@@ -9,51 +9,73 @@ export function useImages() {
   );
   const [copiedImage, setCopiedImage] = useState<CanvasImageData | null>(null);
 
+  const addImageFromSrc = useCallback(
+    async (
+      src: string,
+      offsetIndex = 0,
+      getCurrentCenterPosition: () => { x: number; y: number },
+      assetId?: string
+    ) => {
+      return new Promise<CanvasImageData>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const aspectRatio = img.width / img.height;
+          const maxSize = 500;
+          let width, height;
+
+          if (img.width > img.height) {
+            width = maxSize;
+            height = maxSize / aspectRatio;
+          } else {
+            height = maxSize;
+            width = maxSize * aspectRatio;
+          }
+
+          const center = getCurrentCenterPosition();
+          const stackOffset = offsetIndex * 30;
+
+          const newImage: CanvasImageData = {
+            id: generateId("img"),
+            assetId,
+            src,
+            x: center.x - width / 2 + stackOffset,
+            y: center.y - height / 2 + stackOffset,
+            width,
+            height,
+          };
+
+          setImages((prev) => [...prev, newImage]);
+          resolve(newImage);
+        };
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = src;
+      });
+    },
+    []
+  );
+
   const addImageToCanvas = useCallback(
     async (
       file: File,
       offsetIndex = 0,
       getCurrentCenterPosition: () => { x: number; y: number }
     ) => {
-      return new Promise<void>((resolve) => {
+      return new Promise<CanvasImageData>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const aspectRatio = img.width / img.height;
-            const maxSize = 500;
-            let width, height;
-
-            if (img.width > img.height) {
-              width = maxSize;
-              height = maxSize / aspectRatio;
-            } else {
-              height = maxSize;
-              width = maxSize * aspectRatio;
-            }
-
-            const center = getCurrentCenterPosition();
-
-            const stackOffset = offsetIndex * 30;
-
-            const newImage: CanvasImageData = {
-              id: generateId("img"),
-              src: e.target?.result as string,
-              x: center.x - width / 2 + stackOffset,
-              y: center.y - height / 2 + stackOffset,
-              width,
-              height,
-            };
-
-            setImages((prev) => [...prev, newImage]);
-            resolve();
-          };
-          img.src = e.target?.result as string;
+          void addImageFromSrc(
+            e.target?.result as string,
+            offsetIndex,
+            getCurrentCenterPosition
+          )
+            .then(resolve)
+            .catch(reject);
         };
+        reader.onerror = () => reject(new Error("Failed to read image"));
         reader.readAsDataURL(file);
       });
     },
-    []
+    [addImageFromSrc]
   );
 
   const handleImageSelect = (imageId: string | number, e?: any) => {
@@ -171,6 +193,7 @@ export function useImages() {
     setImages,
     selectedImages,
     setSelectedImages,
+    addImageFromSrc,
     addImageToCanvas,
     handleImageSelect,
     handleImageDragEnd,
@@ -178,4 +201,3 @@ export function useImages() {
     pasteCopiedImage,
   };
 }
-
