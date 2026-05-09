@@ -23,6 +23,94 @@ type RelationshipLine = {
   end: Point;
 };
 
+const SELECTION_ACCENT = "#007AFF";
+const ROTATE_HANDLE_SIZE = 26;
+
+function drawRotateAnchor(context: any, shape: any) {
+  const width = shape.width();
+  const height = shape.height();
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.min(width, height) / 2 - 1;
+  const arrowRadius = radius * 0.45;
+  const arrowStart = Math.PI * 0.06;
+  const arrowEnd = Math.PI * 1.52;
+  const arrowTip = {
+    x: centerX + Math.cos(arrowEnd) * arrowRadius,
+    y: centerY + Math.sin(arrowEnd) * arrowRadius,
+  };
+  const arrowAngle = arrowEnd + Math.PI / 2;
+  const arrowHeadLength = 5.5;
+  const arrowHeadSpread = Math.PI * 0.23;
+
+  context.save();
+  context.beginPath();
+  context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  context.closePath();
+  context.fillStrokeShape(shape);
+
+  context.beginPath();
+  context.arc(centerX, centerY, arrowRadius, arrowStart, arrowEnd);
+  context.strokeStyle = SELECTION_ACCENT;
+  context.lineWidth = 2;
+  context.lineCap = "round";
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(arrowTip.x, arrowTip.y);
+  context.lineTo(
+    arrowTip.x - Math.cos(arrowAngle - arrowHeadSpread) * arrowHeadLength,
+    arrowTip.y - Math.sin(arrowAngle - arrowHeadSpread) * arrowHeadLength
+  );
+  context.lineTo(
+    arrowTip.x - Math.cos(arrowAngle + arrowHeadSpread) * arrowHeadLength,
+    arrowTip.y - Math.sin(arrowAngle + arrowHeadSpread) * arrowHeadLength
+  );
+  context.closePath();
+  context.fillStyle = SELECTION_ACCENT;
+  context.fill();
+  context.restore();
+}
+
+function drawRotateAnchorHit(context: any, shape: any) {
+  const width = shape.width();
+  const height = shape.height();
+
+  context.beginPath();
+  context.arc(
+    width / 2,
+    height / 2,
+    Math.min(width, height) / 2,
+    0,
+    Math.PI * 2
+  );
+  context.closePath();
+  context.fillStrokeShape(shape);
+}
+
+function styleTransformerAnchor(anchor: any) {
+  if (!anchor.hasName("rotater")) {
+    return;
+  }
+
+  anchor.setAttrs({
+    width: ROTATE_HANDLE_SIZE,
+    height: ROTATE_HANDLE_SIZE,
+    offsetX: ROTATE_HANDLE_SIZE / 2,
+    offsetY: ROTATE_HANDLE_SIZE / 2,
+    fill: "#ffffff",
+    stroke: SELECTION_ACCENT,
+    strokeWidth: 1.5,
+    cornerRadius: ROTATE_HANDLE_SIZE / 2,
+    perfectDrawEnabled: false,
+    shadowEnabled: false,
+    shadowForStrokeEnabled: false,
+    shadowOpacity: 0,
+    sceneFunc: drawRotateAnchor,
+    hitFunc: drawRotateAnchorHit,
+  });
+}
+
 type WorkbenchCanvasProps = {
   stageRef: RefObject<any>;
   stageDimensions: { width: number; height: number };
@@ -137,6 +225,8 @@ export function WorkbenchCanvas({
     () => buildRelationshipLines(images),
     [images]
   );
+  const stageWidth = Math.max(1, stageDimensions.width);
+  const stageHeight = Math.max(1, stageDimensions.height);
 
   const handleRelationshipControlMove = useCallback(
     (
@@ -206,8 +296,8 @@ export function WorkbenchCanvas({
     <div style={{ position: "relative", zIndex: 1 }}>
       <Stage
         ref={stageRef}
-        width={stageDimensions.width}
-        height={stageDimensions.height}
+        width={stageWidth}
+        height={stageHeight}
         x={stagePos.x}
         y={stagePos.y}
         scaleX={stageScale}
@@ -286,6 +376,13 @@ export function WorkbenchCanvas({
 
           <Transformer
             ref={transformerRef}
+            anchorFill="#ffffff"
+            anchorStroke={SELECTION_ACCENT}
+            anchorStrokeWidth={1.5}
+            borderStroke={SELECTION_ACCENT}
+            borderStrokeWidth={1.25}
+            rotateAnchorCursor="grab"
+            anchorStyleFunc={styleTransformerAnchor}
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < 50 || newBox.height < 50) {
                 return oldBox;
