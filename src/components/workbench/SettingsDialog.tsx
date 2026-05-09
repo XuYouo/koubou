@@ -75,13 +75,11 @@ type Props = {
   user: SafeUser;
   settings: ImageSettings;
   onSettingsChange: (settings: ImageSettings) => void;
-  projectName: string;
-  onProjectNameChange: (name: string) => void;
   onLogout: () => void;
 };
 
 const navItems = [
-  { id: "workspace", label: "Workspace", icon: Settings, admin: false },
+  { id: "workspace", label: "Defaults", icon: Settings, admin: false },
   { id: "users", label: "Users", icon: Users, admin: true },
   { id: "usage", label: "Usage", icon: BarChart3, admin: true },
   { id: "model", label: "Model API", icon: KeyRound, admin: true },
@@ -93,8 +91,6 @@ export function SettingsDialog({
   user,
   settings,
   onSettingsChange,
-  projectName,
-  onProjectNameChange,
   onLogout,
 }: Props) {
   const visibleNav = useMemo(
@@ -151,14 +147,12 @@ export function SettingsDialog({
               <WorkspaceSettings
                 settings={settings}
                 onSettingsChange={onSettingsChange}
-                projectName={projectName}
-                onProjectNameChange={onProjectNameChange}
               />
             )}
             {activeTab === "users" && user.role === "ADMIN" && <UsersAdmin />}
             {activeTab === "usage" && user.role === "ADMIN" && <UsageAdmin />}
             {activeTab === "model" && user.role === "ADMIN" && (
-              <ModelConfigAdmin onSettingsChange={onSettingsChange} />
+              <ModelConfigAdmin />
             )}
           </main>
         </div>
@@ -170,33 +164,21 @@ export function SettingsDialog({
 function WorkspaceSettings({
   settings,
   onSettingsChange,
-  projectName,
-  onProjectNameChange,
 }: {
   settings: ImageSettings;
   onSettingsChange: (settings: ImageSettings) => void;
-  projectName: string;
-  onProjectNameChange: (name: string) => void;
 }) {
   return (
     <section className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Workspace</h2>
+        <h2 className="text-lg font-semibold">Generation defaults</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          Project state is saved to the server. Model credentials stay in admin
-          configuration.
+          These defaults apply across projects. The prompt bar can override them
+          for a single generation.
         </p>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="project-name">Project name</Label>
-          <Input
-            id="project-name"
-            value={projectName}
-            onChange={(event) => onProjectNameChange(event.target.value)}
-          />
-        </div>
         <div className="space-y-2">
           <Label>Model</Label>
           <Input value="gpt-image-2" disabled />
@@ -442,11 +424,7 @@ function UsageAdmin() {
   );
 }
 
-function ModelConfigAdmin({
-  onSettingsChange,
-}: {
-  onSettingsChange: (settings: ImageSettings) => void;
-}) {
+function ModelConfigAdmin() {
   const [config, setConfig] = useState<ModelConfigView | null>(null);
   const [model, setModel] = useState("gpt-image-2");
   const [baseUrl, setBaseUrl] = useState("");
@@ -466,9 +444,8 @@ function ModelConfigAdmin({
       setBaseUrl(nextConfig.baseUrl);
       setEnabled(nextConfig.enabled);
       setDefaultOptions(nextConfig.defaultOptions);
-      onSettingsChange(nextConfig.defaultOptions);
     }
-  }, [onSettingsChange]);
+  }, []);
 
   useEffect(() => {
     void loadConfig();

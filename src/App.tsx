@@ -10,6 +10,7 @@ import {
   Minus,
   Mouse,
   Plus,
+  RotateCcw,
   Send,
   Settings,
   Upload,
@@ -18,6 +19,13 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CanvasImage } from "@/components/canvas/CanvasImage";
 import { RelationshipCurve } from "@/components/canvas/RelationshipCurve";
 import { ContextMenu } from "@/components/canvas/ContextMenu";
@@ -29,6 +37,9 @@ import { useGeneration } from "@/hooks/useGeneration";
 import { createDotPattern } from "@/lib/utils";
 import {
   DEFAULT_IMAGE_SETTINGS,
+  IMAGE_OUTPUT_FORMATS,
+  IMAGE_QUALITIES,
+  IMAGE_SIZES,
   type ImageSettings,
 } from "@/lib/image-options";
 import type {
@@ -90,6 +101,47 @@ function defaultRelationshipControl(
   };
 }
 
+function settingsEqual(left: ImageSettings, right: ImageSettings) {
+  return (
+    left.size === right.size &&
+    left.quality === right.quality &&
+    left.outputFormat === right.outputFormat
+  );
+}
+
+function PromptSettingSelect({
+  label,
+  value,
+  values,
+  disabled,
+  onValueChange,
+}: {
+  label: string;
+  value: string;
+  values: readonly string[];
+  disabled: boolean;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SelectTrigger
+        aria-label={`${label}: ${value}`}
+        className="h-7 w-auto gap-1 border-0 bg-transparent px-2 text-xs shadow-none hover:bg-neutral-100 focus:ring-0"
+      >
+        <span className="text-neutral-500">{label}</span>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {values.map((item) => (
+          <SelectItem key={item} value={item}>
+            {item}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export default function App({ initialUser }: AppProps) {
   const router = useRouter();
   const [, setIsInputFocused] = useState(false);
@@ -98,17 +150,28 @@ export default function App({ initialUser }: AppProps) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled project");
-  const [settings, setSettings] = useState<ImageSettings>(
+  const [globalSettings, setGlobalSettings] = useState<ImageSettings>(
     DEFAULT_IMAGE_SETTINGS
   );
+  const [generationSettings, setGenerationSettings] = useState<ImageSettings>(
+    DEFAULT_IMAGE_SETTINGS
+  );
+  const [hasGenerationOverride, setHasGenerationOverride] = useState(false);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(
+    null
+  );
+  const [renamingProjectName, setRenamingProjectName] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const hasLoadedProjectRef = useRef(false);
   const hasRequestedInitialProjectsRef = useRef(false);
+  const isCancellingRenameRef = useRef(false);
+  const settingsSaveRequestRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stageRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const trRef = useRef<any>(null);
   const imageRefs = useRef<Map<string | number, any>>(new Map());
 
@@ -169,7 +232,7 @@ export default function App({ initialUser }: AppProps) {
     images,
     setImages,
     getCurrentCenterPosition,
-    settings
+    generationSettings
   );
   const isEditingSelection = selectedImages.size > 0;
   const promptPlaceholder = isEditingSelection
@@ -244,6 +307,58 @@ export default function App({ initialUser }: AppProps) {
     [setStagePos, tool]
   );
 
+  const updateGlobalSettings = useCallback(
+    (nextSettings: ImageSettings) => {
+      const previousSettings = globalSettings;
+      const requestId = settingsSaveRequestRef.current + 1;
+      settingsSaveRequestRef.current = requestId;
+      setGlobalSettings(nextSettings);
+      setGenerationSettings(nextSettings);
+      setHasGenerationOverride(false);
+
+      void fetch("/api/settings/generation", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextSettings),
+      })
+        .then(async (response) => {
+          const body = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(body?.error || "Failed to save generation defaults");
+          }
+          if (settingsSaveRequestRef.current !== requestId) return;
+          if (body?.settings) {
+            setGlobalSettings(body.settings);
+            setGenerationSettings(body.settings);
+          }
+        })
+        .catch((error) => {
+          if (settingsSaveRequestRef.current !== requestId) return;
+          setGlobalSettings(previousSettings);
+          setGenerationSettings(previousSettings);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to save generation defaults"
+          );
+        });
+    },
+    [globalSettings]
+  );
+
+  const updateGenerationSettings = useCallback(
+    (nextSettings: ImageSettings) => {
+      setGenerationSettings(nextSettings);
+      setHasGenerationOverride(!settingsEqual(nextSettings, globalSettings));
+    },
+    [globalSettings]
+  );
+
+  const resetGenerationSettings = useCallback(() => {
+    setGenerationSettings(globalSettings);
+    setHasGenerationOverride(false);
+  }, [globalSettings]);
+
   const hydrateProject = useCallback(
     (project: ProjectSummary) => {
       hasLoadedProjectRef.current = false;
@@ -298,6 +413,33 @@ export default function App({ initialUser }: AppProps) {
     hasRequestedInitialProjectsRef.current = true;
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadGenerationDefaults() {
+      const response = await fetch("/api/settings/generation");
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.settings || ignore) return;
+      setGlobalSettings(body.settings);
+      setGenerationSettings(body.settings);
+      setHasGenerationOverride(false);
+    }
+
+    void loadGenerationDefaults();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!renamingProjectId) return;
+    window.setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 0);
+  }, [renamingProjectId]);
 
   useEffect(() => {
     if (!hasLoadedProjectRef.current || !currentProjectId) return;
@@ -393,6 +535,64 @@ export default function App({ initialUser }: AppProps) {
     }
     setProjects((prev) => [body.project, ...prev]);
     hydrateProject(body.project);
+  }
+
+  function startProjectRename(project: ProjectSummary) {
+    setRenamingProjectId(project.id);
+    setRenamingProjectName(project.name);
+  }
+
+  async function commitProjectRename(project: ProjectSummary) {
+    if (isCancellingRenameRef.current) return;
+    if (renamingProjectId !== project.id) return;
+
+    const nextName = renamingProjectName.trim();
+    setRenamingProjectId(null);
+    setRenamingProjectName("");
+
+    if (!nextName) {
+      toast.error("Project name is required");
+      return;
+    }
+
+    if (nextName === project.name) return;
+
+    const response = await fetch(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nextName }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      toast.error(body?.error || "Failed to rename project");
+      return;
+    }
+
+    const updatedProject = body.project as ProjectSummary;
+    setProjects((prev) =>
+      prev.map((item) =>
+        item.id === updatedProject.id
+          ? {
+              ...item,
+              name: updatedProject.name,
+              updatedAt: updatedProject.updatedAt,
+            }
+          : item
+      )
+    );
+
+    if (currentProjectId === updatedProject.id) {
+      setProjectName(updatedProject.name);
+    }
+  }
+
+  function cancelProjectRename() {
+    isCancellingRenameRef.current = true;
+    setRenamingProjectId(null);
+    setRenamingProjectName("");
+    window.setTimeout(() => {
+      isCancellingRenameRef.current = false;
+    }, 0);
   }
 
   async function uploadAsset(file: File): Promise<AssetResponse> {
@@ -620,27 +820,50 @@ export default function App({ initialUser }: AppProps) {
             </Button>
           </div>
           {projects.map((project) => (
-            <button
-              key={project.id}
-              type="button"
-              onClick={() => hydrateProject(project)}
-              className={`mb-1 w-full truncate rounded px-2 py-2 text-left text-sm ${
-                currentProjectId === project.id
-                  ? "bg-neutral-950 text-white"
-                  : "text-neutral-700 hover:bg-neutral-100"
-              }`}
-            >
-              {project.name}
-            </button>
+            <div key={project.id} className="mb-1">
+              {renamingProjectId === project.id ? (
+                <Input
+                  ref={renameInputRef}
+                  value={renamingProjectName}
+                  onChange={(event) =>
+                    setRenamingProjectName(event.target.value)
+                  }
+                  onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  onBlur={() => void commitProjectRename(project)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancelProjectRename();
+                    }
+                  }}
+                  className="h-9 rounded px-2 text-sm"
+                  aria-label={`Rename ${project.name}`}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => hydrateProject(project)}
+                  onDoubleClick={() => startProjectRename(project)}
+                  title="Double-click to rename"
+                  className={`w-full truncate rounded px-2 py-2 text-left text-sm ${
+                    currentProjectId === project.id
+                      ? "bg-neutral-950 text-white"
+                      : "text-neutral-700 hover:bg-neutral-100"
+                  }`}
+                >
+                  {project.name}
+                </button>
+              )}
+            </div>
           ))}
         </div>
         <div className="border-t border-neutral-200 p-3 text-xs text-neutral-500">
           <div className="flex items-center justify-between">
-            <span>{settings.size}</span>
-            <span>{settings.quality}</span>
-            <span>{settings.outputFormat}</span>
-          </div>
-          <div className="mt-2 flex items-center justify-between">
             <span>{isSaving ? "Saving..." : "Saved to server"}</span>
             <Button
               variant="ghost"
@@ -667,38 +890,88 @@ export default function App({ initialUser }: AppProps) {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         user={initialUser}
-        settings={settings}
-        onSettingsChange={setSettings}
-        projectName={projectName}
-        onProjectNameChange={setProjectName}
+        settings={globalSettings}
+        onSettingsChange={updateGlobalSettings}
         onLogout={() => void logout()}
       />
 
       <div
-        className="fixed bottom-20 left-1/2 flex -translate-x-1/2 transform items-center gap-2"
+        className="fixed bottom-20 left-1/2 w-[min(640px,calc(100vw-32px))] -translate-x-1/2 transform"
         style={{ zIndex: 10 }}
       >
-        <div className="flex items-center rounded-lg border border-neutral-200 bg-white shadow-sm">
-          <Input
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyPress}
-            onFocus={() => setIsInputFocused(true)}
-            onBlur={() => setIsInputFocused(false)}
-            placeholder={promptPlaceholder}
-            className="min-w-[360px] border-0 focus:ring-2"
-            disabled={isGenerating || !currentProjectId}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Send prompt"
-            onClick={() => void handleSendMessage()}
-            className="h-10 w-10 rounded-l-none rounded-r-lg"
-            disabled={isGenerating || !currentProjectId}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+          <div className="flex items-center">
+            <Input
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
+              placeholder={promptPlaceholder}
+              className="h-11 min-w-0 flex-1 border-0 focus-visible:ring-0"
+              disabled={isGenerating || !currentProjectId}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Send prompt"
+              onClick={() => void handleSendMessage()}
+              className="h-11 w-11 rounded-none"
+              disabled={isGenerating || !currentProjectId}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center justify-between border-t border-neutral-100 px-2 py-1.5">
+            <div className="flex min-w-0 items-center gap-1">
+              <PromptSettingSelect
+                label="Size"
+                value={generationSettings.size}
+                values={IMAGE_SIZES}
+                disabled={isGenerating || !currentProjectId}
+                onValueChange={(value) =>
+                  updateGenerationSettings({
+                    ...generationSettings,
+                    size: value as ImageSettings["size"],
+                  })
+                }
+              />
+              <PromptSettingSelect
+                label="Quality"
+                value={generationSettings.quality}
+                values={IMAGE_QUALITIES}
+                disabled={isGenerating || !currentProjectId}
+                onValueChange={(value) =>
+                  updateGenerationSettings({
+                    ...generationSettings,
+                    quality: value as ImageSettings["quality"],
+                  })
+                }
+              />
+              <PromptSettingSelect
+                label="Format"
+                value={generationSettings.outputFormat}
+                values={IMAGE_OUTPUT_FORMATS}
+                disabled={isGenerating || !currentProjectId}
+                onValueChange={(value) =>
+                  updateGenerationSettings({
+                    ...generationSettings,
+                    outputFormat: value as ImageSettings["outputFormat"],
+                  })
+                }
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Use global generation defaults"
+              onClick={resetGenerationSettings}
+              className="h-7 w-7 text-neutral-500"
+              disabled={!hasGenerationOverride || isGenerating}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
 
