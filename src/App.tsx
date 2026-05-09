@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Arrow, Stage, Layer, Rect, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Transformer } from "react-konva";
 import { Toaster, toast } from "sonner";
 import {
   Hand,
@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CanvasImage } from "@/components/canvas/CanvasImage";
+import { RelationshipCurve } from "@/components/canvas/RelationshipCurve";
 import { ContextMenu } from "@/components/canvas/ContextMenu";
 import { SettingsDialog } from "@/components/workbench/SettingsDialog";
 import { useStage } from "@/hooks/useStage";
@@ -70,6 +71,25 @@ function imageCenter(image: CanvasProjectState["images"][number]) {
   };
 }
 
+function defaultRelationshipControl(
+  start: { x: number; y: number },
+  end: { x: number; y: number }
+) {
+  const mid = {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  };
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.max(1, Math.hypot(dx, dy));
+  const offset = Math.min(120, Math.max(44, distance * 0.18));
+
+  return {
+    x: mid.x - (dy / distance) * offset,
+    y: mid.y + (dx / distance) * offset,
+  };
+}
+
 export default function App({ initialUser }: AppProps) {
   const router = useRouter();
   const [, setIsInputFocused] = useState(false);
@@ -110,6 +130,7 @@ export default function App({ initialUser }: AppProps) {
     setSelectedImages,
     addImageFromSrc,
     handleImageSelect,
+    handleImageDragMove,
     handleImageDragEnd,
     handleImageTransform,
     pasteCopiedImage,
@@ -165,16 +186,63 @@ export default function App({ initialUser }: AppProps) {
           if (!source || source.id === target.id) return null;
           const start = imageCenter(source);
           const end = imageCenter(target);
+          const control =
+            target.relationshipControls?.[String(source.id)] ||
+            defaultRelationshipControl(start, end);
           return {
             key: `${source.id}-${target.id}`,
-            points: [start.x, start.y, end.x, end.y],
+            sourceId: source.id,
+            targetId: target.id,
+            start,
+            control,
+            end,
           };
         })
-        .filter((line): line is { key: string; points: number[] } =>
-          Boolean(line)
+        .filter(
+          (
+            line
+          ): line is {
+            key: string;
+            sourceId: string | number;
+            targetId: string | number;
+            start: { x: number; y: number };
+            control: { x: number; y: number };
+            end: { x: number; y: number };
+          } => Boolean(line)
         )
     );
   }, [images]);
+
+  const handleRelationshipControlMove = useCallback(
+    (
+      targetId: string | number,
+      sourceId: string | number,
+      point: { x: number; y: number }
+    ) => {
+      setImages((prev) =>
+        prev.map((image) =>
+          image.id === targetId
+            ? {
+                ...image,
+                relationshipControls: {
+                  ...(image.relationshipControls || {}),
+                  [String(sourceId)]: point,
+                },
+              }
+            : image
+        )
+      );
+    },
+    [setImages]
+  );
+
+  const handleStageDrag = useCallback(
+    (e: any) => {
+      if (tool !== "hand") return;
+      setStagePos(e.currentTarget.position());
+    },
+    [setStagePos, tool]
+  );
 
   const hydrateProject = useCallback(
     (project: ProjectSummary) => {
@@ -382,12 +450,6 @@ export default function App({ initialUser }: AppProps) {
     if (e.target) e.target.value = "";
   };
 
-  const handleDragEnd = (e: any) => {
-    if (tool === "hand") {
-      setStagePos(e.currentTarget.position());
-    }
-  };
-
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.refresh();
@@ -442,8 +504,9 @@ export default function App({ initialUser }: AppProps) {
           scaleX={stageScale}
           scaleY={stageScale}
           draggable={tool === "hand"}
-          onDragEnd={handleDragEnd}
           onWheel={handleWheel}
+          onDragMove={handleStageDrag}
+          onDragEnd={handleStageDrag}
           onMouseDown={handleStageMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -451,19 +514,19 @@ export default function App({ initialUser }: AppProps) {
         >
           <Layer>
             {relationshipLines.map((line) => (
-              <Arrow
+              <RelationshipCurve
                 key={line.key}
-                points={line.points}
-                stroke="#2563eb"
-                fill="#2563eb"
-                opacity={0.44}
-                strokeWidth={2 / stageScale}
-                pointerLength={12 / stageScale}
-                pointerWidth={10 / stageScale}
-                dash={[8 / stageScale, 10 / stageScale]}
-                lineCap="round"
-                lineJoin="round"
-                listening={false}
+                start={line.start}
+                control={line.control}
+                end={line.end}
+                stageScale={stageScale}
+                onControlDragMove={(point) =>
+                  handleRelationshipControlMove(
+                    line.targetId,
+                    line.sourceId,
+                    point
+                  )
+                }
               />
             ))}
 
@@ -479,7 +542,15 @@ export default function App({ initialUser }: AppProps) {
                 }}
                 imageData={image}
                 isSelected={selectedImages.has(image.id)}
-                onSelect={(e: any) => handleImageSelect(image.id, e)}
+                isDraggable={tool === "mouse"}
+                onSelect={(e: any) => {
+                  if (tool !== "mouse") {
+                    e.cancelBubble = true;
+                    return;
+                  }
+                  handleImageSelect(image.id, e);
+                }}
+                onDragMove={(e: any) => handleImageDragMove(image.id, e)}
                 onDragEnd={(e: any) => handleImageDragEnd(image.id, e)}
                 onTransform={(e: any) => handleImageTransform(image.id, e)}
                 onContextMenu={(e: any) => handleContextMenu(e, image)}

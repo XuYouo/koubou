@@ -12,7 +12,9 @@ import { useImageFromSrc } from "@/hooks/useImageFromSrc";
 type CanvasImageProps = {
   imageData: CanvasImageData;
   isSelected: boolean;
+  isDraggable?: boolean;
   onSelect: (e: any) => void;
+  onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
   onTransform: (e: any) => void;
   onContextMenu: (e: any) => void;
@@ -76,7 +78,16 @@ function LoadingDotMatrix({
 
 export const CanvasImage = forwardRef<any, CanvasImageProps>(
   (
-    { imageData, isSelected, onSelect, onDragEnd, onTransform, onContextMenu },
+    {
+      imageData,
+      isSelected,
+      isDraggable = true,
+      onSelect,
+      onDragMove,
+      onDragEnd,
+      onTransform,
+      onContextMenu,
+    },
     ref
   ) => {
     const image = useImageFromSrc(imageData.src);
@@ -89,9 +100,10 @@ export const CanvasImage = forwardRef<any, CanvasImageProps>(
           y={imageData.y}
           width={imageData.width}
           height={imageData.height}
-          draggable
+          draggable={isDraggable}
           onClick={onSelect}
           onTap={onSelect}
+          onDragMove={onDragMove}
           onDragEnd={onDragEnd}
           onTransformEnd={onTransform}
           onContextMenu={onContextMenu}
@@ -146,9 +158,10 @@ export const CanvasImage = forwardRef<any, CanvasImageProps>(
         y={imageData.y}
         width={imageData.width}
         height={imageData.height}
-        draggable
+        draggable={isDraggable}
         onClick={onSelect}
         onTap={onSelect}
+        onDragMove={onDragMove}
         onDragEnd={onDragEnd}
         onTransformEnd={onTransform}
         onContextMenu={onContextMenu}

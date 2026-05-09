@@ -2,6 +2,8 @@ import { useState, useCallback } from "react";
 import type { CanvasImageData } from "@/lib/types";
 import { useContextMenu } from "./useContextMenu";
 
+export type CanvasTool = "mouse" | "hand";
+
 export function useCanvas(
   stageRef: any,
   stagePos: any,
@@ -9,8 +11,9 @@ export function useCanvas(
   images: CanvasImageData[],
   setSelectedImages: any
 ) {
-  const [tool, setTool] = useState("mouse");
+  const [tool, setTool] = useState<CanvasTool>("mouse");
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   const [selectionRect, setSelectionRect] = useState({
     x: 0,
     y: 0,
@@ -31,6 +34,13 @@ export function useCanvas(
 
   const handleMouseDown = (e: any) => {
     if (e.evt.button === 2) return;
+
+    if (tool === "hand") {
+      setIsPanning(true);
+      hideContextMenu();
+      return;
+    }
+
     if (tool === "mouse" && e.target === e.target.getStage()) {
       const pos = getPointerPosition();
       setSelectionStart(pos);
@@ -63,23 +73,12 @@ export function useCanvas(
     setSelectedImages(newSelectedImages);
   };
 
-  const handleMouseUp = (e: any) => {
-    if (tool === "mouse") {
-      setIsSelecting(false);
-    }
-
-    if (tool === "hand") {
-      e.target.getStage().container().style.cursor =
-        tool === "hand" ? "grab" : "crosshair";
-    }
+  const handleMouseUp = () => {
+    setIsSelecting(false);
+    setIsPanning(false);
   };
 
   const handleStageMouseDown = (e: any) => {
-    if (tool === "hand") {
-      if (e.target === e.target.getStage()) {
-        e.target.getStage().container().style.cursor = "grabbing";
-      }
-    }
     handleMouseDown(e);
   };
 
@@ -113,9 +112,8 @@ export function useCanvas(
   };
 
   const getCursor = () => {
-    if (tool === "hand") return "grab";
-    if (tool === "mouse") return "crosshair";
-    return "default";
+    if (tool === "hand") return isPanning ? "grabbing" : "grab";
+    return "crosshair";
   };
 
   return {

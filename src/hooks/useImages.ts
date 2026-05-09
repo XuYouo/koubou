@@ -96,13 +96,21 @@ export function useImages() {
     });
   };
 
-  const handleImageDragEnd = (imageId: string | number, e: any) => {
+  const updateImagePosition = (imageId: string | number, e: any) => {
     const newPos = e.target.position();
     setImages((prev) =>
       prev.map((img) =>
         img.id === imageId ? { ...img, x: newPos.x, y: newPos.y } : img
       )
     );
+  };
+
+  const handleImageDragMove = (imageId: string | number, e: any) => {
+    updateImagePosition(imageId, e);
+  };
+
+  const handleImageDragEnd = (imageId: string | number, e: any) => {
+    updateImagePosition(imageId, e);
   };
 
   const handleImageTransform = (imageId: string | number, e: any) => {
@@ -196,6 +204,7 @@ export function useImages() {
     addImageFromSrc,
     addImageToCanvas,
     handleImageSelect,
+    handleImageDragMove,
     handleImageDragEnd,
     handleImageTransform,
     pasteCopiedImage,

@@ -10,6 +10,7 @@ export type CanvasImageData = {
   generationRequestId?: string;
   isGenerating?: boolean;
   inputImageIds?: Array<string | number>;
+  relationshipControls?: Record<string, { x: number; y: number }>;
 };
 
 export type SafeUser = {
