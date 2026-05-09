@@ -8,6 +8,7 @@ import { ContextMenu } from "@/components/canvas/ContextMenu";
 import { CanvasBackground } from "@/components/workbench/CanvasBackground";
 import { DeleteProjectDialog } from "@/components/workbench/DeleteProjectDialog";
 import { ImageInspectorPanel } from "@/components/workbench/ImageInspectorPanel";
+import { MaskEditWorkspace } from "@/components/workbench/MaskEditWorkspace";
 import { ProjectActionMenu } from "@/components/workbench/ProjectActionMenu";
 import { ProjectSidebar } from "@/components/workbench/ProjectSidebar";
 import { PromptBar } from "@/components/workbench/PromptBar";
@@ -20,6 +21,7 @@ import { useCanvasUploads } from "@/hooks/useCanvasUploads";
 import { useGeneration } from "@/hooks/useGeneration";
 import { useGenerationSettings } from "@/hooks/useGenerationSettings";
 import { useImages } from "@/hooks/useImages";
+import { usePartialImageEdit } from "@/hooks/usePartialImageEdit";
 import { useProjectWorkspace } from "@/hooks/useProjectWorkspace";
 import { useStage } from "@/hooks/useStage";
 import type { ProjectSummary, SafeUser } from "@/lib/types";
@@ -135,6 +137,15 @@ export default function App({ initialUser }: AppProps) {
     generationSettings
   );
 
+  const partialImageEdit = usePartialImageEdit({
+    projectId: currentProjectId,
+    images,
+    selectedImages,
+    setImages,
+    setSelectedImages,
+    settings: generationSettings,
+  });
+
   const { fileInputRef, handleFileUpload } = useCanvasUploads({
     currentProjectId,
     addImageFromSrc,
@@ -143,7 +154,10 @@ export default function App({ initialUser }: AppProps) {
   });
 
   const isEditingSelection = selectedImages.size > 0;
-  const promptPlaceholder = isEditingSelection
+  const isMaskEditMode = Boolean(partialImageEdit.session);
+  const promptPlaceholder = partialImageEdit.session
+    ? "Describe the full edited image..."
+    : isEditingSelection
     ? selectedImages.size === 1
       ? "Edit the selected image: describe the change..."
       : `Edit ${selectedImages.size} selected references: describe the change...`
@@ -176,15 +190,26 @@ export default function App({ initialUser }: AppProps) {
     const text = inputText.trim();
     if (!text) return;
 
+    if (partialImageEdit.session) {
+      const accepted = await partialImageEdit.submit(text);
+      if (accepted) setInputText("");
+      return;
+    }
+
     const selectedIds = new Set<string | number>(Array.from(selectedImages));
     setInputText("");
     await callGenerateImage(text, selectedIds);
-  }, [inputText, selectedImages, callGenerateImage]);
+  }, [inputText, partialImageEdit, selectedImages, callGenerateImage]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.refresh();
   }
+
+  const handleStartMaskEdit = useCallback(() => {
+    setTool("mouse");
+    partialImageEdit.start();
+  }, [partialImageEdit, setTool]);
 
   return (
     <div
@@ -207,84 +232,103 @@ export default function App({ initialUser }: AppProps) {
         onChange={handleFileUpload}
       />
 
-      <CanvasBackground stagePos={stagePos} stageScale={stageScale} />
+      <div
+        aria-hidden={isMaskEditMode}
+        className={
+          isMaskEditMode
+            ? "pointer-events-none opacity-20 transition-opacity duration-200"
+            : "opacity-100 transition-opacity duration-200"
+        }
+      >
+        <CanvasBackground stagePos={stagePos} stageScale={stageScale} />
 
-      <WorkbenchCanvas
-        stageRef={stageRef}
-        stageDimensions={stageDimensions}
-        stagePos={stagePos}
-        stageScale={stageScale}
-        tool={tool}
-        images={images}
-        setImages={setImages}
-        selectedImages={selectedImages}
-        isSelecting={isSelecting}
-        selectionRect={selectionRect}
-        onWheel={handleWheel}
-        onStageDrag={handleStageDrag}
-        onStageMouseDown={handleStageMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        getCursor={getCursor}
-        onImageSelect={handleImageSelect}
-        onImageDragMove={handleImageDragMove}
-        onImageDragEnd={handleImageDragEnd}
-        onImageTransform={handleImageTransform}
-        onImageContextMenu={handleContextMenu}
-      />
-
-      <ProjectSidebar
-        username={initialUser.username}
-        projects={projects}
-        currentProjectId={currentProjectId}
-        currentProjectImages={images}
-        selectedImages={selectedImages}
-        isLoadingProjects={isLoadingProjects}
-        isSaving={isSaving}
-        renamingProjectId={renamingProjectId}
-        renamingProjectName={renamingProjectName}
-        renameInputRef={renameInputRef}
-        onCreateProject={() => void createProject()}
-        onSelectProject={hydrateProject}
-        onStartRename={startProjectRename}
-        onRenameNameChange={setRenamingProjectName}
-        onCommitRename={(project) => void commitProjectRename(project)}
-        onCancelRename={cancelProjectRename}
-        onOpenContextMenu={openProjectContextMenu}
-        onSelectResource={handleProjectResourceSelect}
-        onOpenGallery={() => setGalleryOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-
-      <UserGalleryPanel
-        open={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-      />
-
-      <ImageInspectorPanel images={images} selectedImages={selectedImages} />
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onSave={contextMenu.onSave}
+        <WorkbenchCanvas
+          stageRef={stageRef}
+          stageDimensions={stageDimensions}
+          stagePos={stagePos}
+          stageScale={stageScale}
+          tool={tool}
+          images={images}
+          setImages={setImages}
+          selectedImages={selectedImages}
+          isSelecting={isSelecting}
+          selectionRect={selectionRect}
+          onWheel={handleWheel}
+          onStageDrag={handleStageDrag}
+          onStageMouseDown={handleStageMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          getCursor={getCursor}
+          onImageSelect={handleImageSelect}
+          onImageDragMove={handleImageDragMove}
+          onImageDragEnd={handleImageDragEnd}
+          onImageTransform={handleImageTransform}
+          onImageContextMenu={handleContextMenu}
+          onImageDoubleClick={(event, image) => {
+            event.cancelBubble = true;
+            setTool("mouse");
+            partialImageEdit.startForImage(image);
+          }}
+          maskEditImage={null}
+          maskEditStrokes={[]}
+          onMaskPointerDown={partialImageEdit.handlePointerDown}
+          onMaskPointerMove={partialImageEdit.handlePointerMove}
+          onMaskPointerUp={partialImageEdit.handlePointerUp}
         />
-      )}
 
-      <ProjectActionMenu
-        menu={projectContextMenu}
-        onRequestDelete={(project) => {
-          setProjectToDelete(project);
-          closeProjectContextMenu();
-        }}
-      />
+        <ProjectSidebar
+          username={initialUser.username}
+          projects={projects}
+          currentProjectId={currentProjectId}
+          currentProjectImages={images}
+          selectedImages={selectedImages}
+          isLoadingProjects={isLoadingProjects}
+          isSaving={isSaving}
+          renamingProjectId={renamingProjectId}
+          renamingProjectName={renamingProjectName}
+          renameInputRef={renameInputRef}
+          onCreateProject={() => void createProject()}
+          onSelectProject={hydrateProject}
+          onStartRename={startProjectRename}
+          onRenameNameChange={setRenamingProjectName}
+          onCommitRename={(project) => void commitProjectRename(project)}
+          onCancelRename={cancelProjectRename}
+          onOpenContextMenu={openProjectContextMenu}
+          onSelectResource={handleProjectResourceSelect}
+          onOpenGallery={() => setGalleryOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
 
-      <DeleteProjectDialog
-        project={projectToDelete}
-        isDeleting={isDeletingProject}
-        onCancel={() => setProjectToDelete(null)}
-        onConfirm={() => void confirmProjectDelete()}
-      />
+        <UserGalleryPanel
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+        />
+
+        <ImageInspectorPanel images={images} selectedImages={selectedImages} />
+
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onSave={contextMenu.onSave}
+          />
+        )}
+
+        <ProjectActionMenu
+          menu={projectContextMenu}
+          onRequestDelete={(project) => {
+            setProjectToDelete(project);
+            closeProjectContextMenu();
+          }}
+        />
+
+        <DeleteProjectDialog
+          project={projectToDelete}
+          isDeleting={isDeletingProject}
+          onCancel={() => setProjectToDelete(null)}
+          onConfirm={() => void confirmProjectDelete()}
+        />
+      </div>
 
       <SettingsDialog
         open={settingsOpen}
@@ -295,28 +339,58 @@ export default function App({ initialUser }: AppProps) {
         onLogout={() => void logout()}
       />
 
-      <PromptBar
-        value={inputText}
-        placeholder={promptPlaceholder}
-        settings={generationSettings}
-        hasGenerationOverride={hasGenerationOverride}
-        disabled={isGenerating || !currentProjectId}
-        onValueChange={setInputText}
-        onSend={() => void handleSendMessage()}
-        onSettingsChange={updateGenerationSettings}
-        onResetSettings={resetGenerationSettings}
-      />
+      {!isMaskEditMode && (
+        <>
+          <PromptBar
+            value={inputText}
+            placeholder={promptPlaceholder}
+            settings={generationSettings}
+            hasGenerationOverride={hasGenerationOverride}
+            disabled={isGenerating || !currentProjectId}
+            onValueChange={setInputText}
+            onSend={() => void handleSendMessage()}
+            onSettingsChange={updateGenerationSettings}
+            onResetSettings={resetGenerationSettings}
+          />
 
-      <WorkbenchToolbar
-        tool={tool}
-        canUpload={Boolean(currentProjectId)}
-        stageScale={stageScale}
-        onToolChange={setTool}
-        onUpload={() => fileInputRef.current?.click()}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onZoom={handleZoom}
-        onResetZoom={resetZoom}
-      />
+          <WorkbenchToolbar
+            tool={tool}
+            canUpload={Boolean(currentProjectId)}
+            canStartMaskEdit={partialImageEdit.canStart}
+            isMaskEditing={false}
+            stageScale={stageScale}
+            onToolChange={setTool}
+            onStartMaskEdit={handleStartMaskEdit}
+            onUpload={() => fileInputRef.current?.click()}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onZoom={handleZoom}
+            onResetZoom={resetZoom}
+          />
+        </>
+      )}
+
+      {partialImageEdit.session && partialImageEdit.targetImage && (
+        <MaskEditWorkspace
+          image={partialImageEdit.targetImage}
+          tool={partialImageEdit.session.tool}
+          brushSize={partialImageEdit.session.brushSize}
+          strokes={partialImageEdit.session.strokes}
+          disabled={partialImageEdit.isSubmitting}
+          prompt={inputText}
+          settings={partialImageEdit.editSettings}
+          onPromptChange={setInputText}
+          onSubmit={() => void handleSendMessage()}
+          onToolChange={partialImageEdit.setTool}
+          onBrushSizeChange={partialImageEdit.setBrushSize}
+          onUndo={partialImageEdit.undo}
+          onClear={partialImageEdit.clear}
+          onCancel={partialImageEdit.cancel}
+          onSettingsChange={partialImageEdit.setEditSettings}
+          onStrokeStart={partialImageEdit.beginStroke}
+          onStrokeMove={partialImageEdit.extendStroke}
+          onStrokeEnd={partialImageEdit.endStroke}
+        />
+      )}
     </div>
   );
 }

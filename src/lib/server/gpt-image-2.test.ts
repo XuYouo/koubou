@@ -136,6 +136,60 @@ describe("gpt-image-2 adapter", () => {
     );
   });
 
+  it("calls edits with multipart mask input", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "koubou-test-"));
+    process.env.APP_STORAGE_DIR = root;
+    await fs.mkdir(path.join(root, "u1", "p1"), { recursive: true });
+    await fs.writeFile(path.join(root, "u1", "p1", "source.png"), "source");
+
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(init?.body).toBeInstanceOf(FormData);
+      const form = init?.body as FormData;
+      expect(form.getAll("image")).toHaveLength(1);
+      const mask = form.get("mask");
+      expect(mask).toBeInstanceOf(File);
+      expect((mask as File).name).toBe("mask.png");
+      expect((mask as File).type).toBe("image/png");
+      return new Response(
+        JSON.stringify({
+          data: [{ b64_json: Buffer.from("masked edit").toString("base64") }],
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callGptImage2({
+      config: { baseUrl: "https://api.example.com", model: "gpt-image-2" },
+      apiKey: "test-key",
+      prompt: "edit a masked area",
+      settings,
+      inputAssets: [
+        {
+          id: "a1",
+          userId: "u1",
+          projectId: "p1",
+          type: "UPLOAD",
+          mime: "image/png",
+          width: null,
+          height: null,
+          storagePath: "u1/p1/source.png",
+          createdAt: new Date(),
+        },
+      ],
+      mask: {
+        bytes: Buffer.from("mask"),
+        mime: "image/png",
+        filename: "mask.png",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.com/v1/images/edits",
+      expect.any(Object)
+    );
+  });
+
   it("retries edits with image[] when a gateway rejects image fields", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "koubou-test-"));
     process.env.APP_STORAGE_DIR = root;

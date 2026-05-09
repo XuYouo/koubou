@@ -28,7 +28,11 @@ export const DEFAULT_IMAGE_SETTINGS: ImageSettings = {
   outputFormat: "png",
 };
 
-export function normalizeImageSettings(input: Partial<ImageSettings>): ImageSettings {
+export function normalizeImageSettings(input: {
+  size?: unknown;
+  quality?: unknown;
+  outputFormat?: unknown;
+}): ImageSettings {
   return {
     size: IMAGE_SIZES.includes(input.size as ImageSize)
       ? (input.size as ImageSize)

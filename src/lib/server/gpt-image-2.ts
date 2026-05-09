@@ -23,10 +23,22 @@ export type GptImageResult = {
   mime: string;
 };
 
-export function validateGptImageSettings(input: Partial<GptImageSettings>) {
-  const size = input.size || "1024x1024";
-  const quality = input.quality || "auto";
-  const outputFormat = input.outputFormat || "png";
+export type GptImageMask = {
+  bytes: Uint8Array;
+  mime: string;
+  filename: string;
+};
+
+export function validateGptImageSettings(input: {
+  size?: unknown;
+  quality?: unknown;
+  outputFormat?: unknown;
+}) {
+  const size = typeof input.size === "string" ? input.size : "1024x1024";
+  const quality =
+    typeof input.quality === "string" ? input.quality : "auto";
+  const outputFormat =
+    typeof input.outputFormat === "string" ? input.outputFormat : "png";
 
   if (!IMAGE_SIZES.includes(size as ImageSize)) {
     throw new Error("Unsupported image size");
@@ -180,12 +192,14 @@ async function requestMultipart({
   fields,
   images,
   imageFieldName,
+  mask,
 }: {
   url: string;
   apiKey: string;
   fields: Record<string, string>;
   images: Asset[];
   imageFieldName: "image" | "image[]";
+  mask?: GptImageMask;
 }) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
@@ -197,6 +211,14 @@ async function requestMultipart({
     const extension = path.extname(image.storagePath) || ".png";
     const blob = new Blob([bytes], { type: image.mime });
     form.append(imageFieldName, blob, `image-${index + 1}${extension}`);
+  }
+
+  if (mask) {
+    form.append(
+      "mask",
+      new Blob([mask.bytes], { type: mask.mime }),
+      mask.filename
+    );
   }
 
   const response = await fetch(url, {
@@ -222,12 +244,14 @@ export async function callGptImage2({
   prompt,
   settings,
   inputAssets,
+  mask,
 }: {
   config: Pick<ModelConfig, "baseUrl" | "model">;
   apiKey: string;
   prompt: string;
   settings: GptImageSettings;
   inputAssets: Asset[];
+  mask?: GptImageMask;
 }) {
   const model = config.model || "gpt-image-2";
   const fallbackMime = outputMime(settings.outputFormat);
@@ -244,6 +268,7 @@ export async function callGptImage2({
               fields: payload,
               images: inputAssets,
               imageFieldName: "image",
+              mask,
             });
           } catch (error) {
             if (!isImageFieldCompatibilityError(error)) {
@@ -256,6 +281,7 @@ export async function callGptImage2({
               fields: payload,
               images: inputAssets,
               imageFieldName: "image[]",
+              mask,
             });
           }
         })()

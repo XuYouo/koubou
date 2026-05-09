@@ -18,6 +18,7 @@ type CanvasImageProps = {
   onDragEnd: (e: any) => void;
   onTransform: (e: any) => void;
   onContextMenu: (e: any) => void;
+  onDoubleClick: (e: any) => void;
 };
 
 function LoadingDotMatrix({
@@ -87,6 +88,7 @@ export const CanvasImage = forwardRef<any, CanvasImageProps>(
       onDragEnd,
       onTransform,
       onContextMenu,
+      onDoubleClick,
     },
     ref
   ) => {
@@ -107,6 +109,8 @@ export const CanvasImage = forwardRef<any, CanvasImageProps>(
           onDragEnd={onDragEnd}
           onTransformEnd={onTransform}
           onContextMenu={onContextMenu}
+          onDblClick={onDoubleClick}
+          onDblTap={onDoubleClick}
         >
           <Rect
             width={imageData.width}
@@ -165,6 +169,8 @@ export const CanvasImage = forwardRef<any, CanvasImageProps>(
         onDragEnd={onDragEnd}
         onTransformEnd={onTransform}
         onContextMenu={onContextMenu}
+        onDblClick={onDoubleClick}
+        onDblTap={onDoubleClick}
         stroke={isSelected ? "#007AFF" : "transparent"}
         strokeWidth={isSelected ? 4 : 0}
       />

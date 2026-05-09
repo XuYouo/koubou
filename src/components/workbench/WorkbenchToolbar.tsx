@@ -1,13 +1,21 @@
-import { Hand, Minus, Mouse, Plus, Settings, Upload } from "lucide-react";
+import { Brush, Hand, Minus, Mouse, Plus, Settings, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { CanvasTool } from "@/hooks/useCanvas";
 
 type WorkbenchToolbarProps = {
   tool: CanvasTool;
   canUpload: boolean;
+  canStartMaskEdit: boolean;
+  isMaskEditing: boolean;
   stageScale: number;
   onToolChange: (tool: CanvasTool) => void;
+  onStartMaskEdit: () => void;
   onUpload: () => void;
   onOpenSettings: () => void;
   onZoom: (direction: "in" | "out") => void;
@@ -17,8 +25,11 @@ type WorkbenchToolbarProps = {
 export function WorkbenchToolbar({
   tool,
   canUpload,
+  canStartMaskEdit,
+  isMaskEditing,
   stageScale,
   onToolChange,
+  onStartMaskEdit,
   onUpload,
   onOpenSettings,
   onZoom,
@@ -49,6 +60,21 @@ export function WorkbenchToolbar({
           <Hand className="h-4 w-4" />
         </Button>
         <div className="mx-1 h-6 w-px bg-neutral-200" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={isMaskEditing ? "default" : "ghost"}
+              size="icon"
+              aria-label="Mask brush"
+              onClick={isMaskEditing ? undefined : onStartMaskEdit}
+              className="h-8 w-8"
+              disabled={!canStartMaskEdit && !isMaskEditing}
+            >
+              <Brush className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Mask brush</TooltipContent>
+        </Tooltip>
         <Button
           variant="ghost"
           size="icon"

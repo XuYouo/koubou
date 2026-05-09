@@ -3,8 +3,10 @@ import { Layer, Rect, Stage, Transformer } from "react-konva";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 import { CanvasImage } from "@/components/canvas/CanvasImage";
+import { MaskOverlay } from "@/components/canvas/MaskOverlay";
 import { RelationshipCurve } from "@/components/canvas/RelationshipCurve";
 import type { CanvasTool } from "@/hooks/useCanvas";
+import type { MaskStroke } from "@/lib/mask-edit";
 import type { CanvasImageData } from "@/lib/types";
 
 type Point = {
@@ -43,6 +45,12 @@ type WorkbenchCanvasProps = {
   onImageDragEnd: (imageId: string | number, event: any) => void;
   onImageTransform: (imageId: string | number, event: any) => void;
   onImageContextMenu: (event: any, image: CanvasImageData) => void;
+  onImageDoubleClick: (event: any, image: CanvasImageData) => void;
+  maskEditImage: CanvasImageData | null;
+  maskEditStrokes: MaskStroke[];
+  onMaskPointerDown: (event: any) => void;
+  onMaskPointerMove: (event: any) => void;
+  onMaskPointerUp: () => void;
 };
 
 function imageCenter(image: CanvasImageData) {
@@ -115,9 +123,16 @@ export function WorkbenchCanvas({
   onImageDragEnd,
   onImageTransform,
   onImageContextMenu,
+  onImageDoubleClick,
+  maskEditImage,
+  maskEditStrokes,
+  onMaskPointerDown,
+  onMaskPointerMove,
+  onMaskPointerUp,
 }: WorkbenchCanvasProps) {
   const transformerRef = useRef<any>(null);
   const imageRefs = useRef<Map<string | number, any>>(new Map());
+  const isMaskEditing = Boolean(maskEditImage);
   const relationshipLines = useMemo(
     () => buildRelationshipLines(images),
     [images]
@@ -148,12 +163,44 @@ export function WorkbenchCanvas({
 
   useEffect(() => {
     if (!transformerRef.current) return;
-    const selectedNodes = Array.from(selectedImages)
-      .map((id) => imageRefs.current.get(id))
-      .filter(Boolean);
+    const selectedNodes = isMaskEditing
+      ? []
+      : Array.from(selectedImages)
+          .map((id) => imageRefs.current.get(id))
+          .filter(Boolean);
     transformerRef.current.nodes(selectedNodes);
     transformerRef.current.getLayer().batchDraw();
-  }, [selectedImages]);
+  }, [isMaskEditing, selectedImages]);
+
+  const handleStageMouseDownEvent = useCallback(
+    (event: any) => {
+      if (isMaskEditing) {
+        onMaskPointerDown(event);
+        return;
+      }
+      onStageMouseDown(event);
+    },
+    [isMaskEditing, onMaskPointerDown, onStageMouseDown]
+  );
+
+  const handleStageMouseMoveEvent = useCallback(
+    (event: any) => {
+      if (isMaskEditing) {
+        onMaskPointerMove(event);
+        return;
+      }
+      onMouseMove(event);
+    },
+    [isMaskEditing, onMaskPointerMove, onMouseMove]
+  );
+
+  const handleStageMouseUpEvent = useCallback((event: any) => {
+    if (isMaskEditing) {
+      onMaskPointerUp();
+      return;
+    }
+    onMouseUp(event);
+  }, [isMaskEditing, onMaskPointerUp, onMouseUp]);
 
   return (
     <div style={{ position: "relative", zIndex: 1 }}>
@@ -165,13 +212,16 @@ export function WorkbenchCanvas({
         y={stagePos.y}
         scaleX={stageScale}
         scaleY={stageScale}
-        draggable={tool === "hand"}
+        draggable={tool === "hand" && !isMaskEditing}
         onWheel={onWheel}
         onDragMove={onStageDrag}
         onDragEnd={onStageDrag}
-        onMouseDown={onStageMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
+        onMouseDown={handleStageMouseDownEvent}
+        onMouseMove={handleStageMouseMoveEvent}
+        onMouseUp={handleStageMouseUpEvent}
+        onTouchStart={handleStageMouseDownEvent}
+        onTouchMove={handleStageMouseMoveEvent}
+        onTouchEnd={handleStageMouseUpEvent}
         style={{ cursor: getCursor() }}
       >
         <Layer>
@@ -204,9 +254,9 @@ export function WorkbenchCanvas({
               }}
               imageData={image}
               isSelected={selectedImages.has(image.id)}
-              isDraggable={tool === "mouse"}
+              isDraggable={tool === "mouse" && !isMaskEditing}
               onSelect={(event: any) => {
-                if (tool !== "mouse") {
+                if (tool !== "mouse" || isMaskEditing) {
                   event.cancelBubble = true;
                   return;
                 }
@@ -216,8 +266,23 @@ export function WorkbenchCanvas({
               onDragEnd={(event: any) => onImageDragEnd(image.id, event)}
               onTransform={(event: any) => onImageTransform(image.id, event)}
               onContextMenu={(event: any) => onImageContextMenu(event, image)}
+              onDoubleClick={(event: any) => {
+                if (isMaskEditing || image.isGenerating) {
+                  event.cancelBubble = true;
+                  return;
+                }
+                onImageDoubleClick(event, image);
+              }}
             />
           ))}
+
+          {maskEditImage && (
+            <MaskOverlay
+              image={maskEditImage}
+              strokes={maskEditStrokes}
+              stageScale={stageScale}
+            />
+          )}
 
           <Transformer
             ref={transformerRef}
