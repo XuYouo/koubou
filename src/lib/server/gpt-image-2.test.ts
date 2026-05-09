@@ -84,7 +84,7 @@ describe("gpt-image-2 adapter", () => {
     expect(result.mime).toBe("image/png");
   });
 
-  it("calls edits with multipart image[] inputs", async () => {
+  it("calls edits with multipart image inputs", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "koubou-test-"));
     process.env.APP_STORAGE_DIR = root;
     await fs.mkdir(path.join(root, "u1", "p1"), { recursive: true });
@@ -99,7 +99,8 @@ describe("gpt-image-2 adapter", () => {
       const form = init?.body as FormData;
       expect(form.get("model")).toBe("gpt-image-2");
       expect(form.get("prompt")).toBe("edit it");
-      expect(form.getAll("image[]")).toHaveLength(1);
+      expect(form.getAll("image")).toHaveLength(1);
+      expect(form.getAll("image[]")).toHaveLength(0);
       return new Response(
         JSON.stringify({
           data: [{ b64_json: Buffer.from("edited").toString("base64") }],
@@ -133,5 +134,56 @@ describe("gpt-image-2 adapter", () => {
       "https://api.example.com/v1/images/edits",
       expect.any(Object)
     );
+  });
+
+  it("retries edits with image[] when a gateway rejects image fields", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "koubou-test-"));
+    process.env.APP_STORAGE_DIR = root;
+    await fs.mkdir(path.join(root, "u1", "p1"), { recursive: true });
+    await fs.writeFile(path.join(root, "u1", "p1", "source.png"), "source");
+
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const form = init?.body as FormData;
+        if (fetchMock.mock.calls.length === 1) {
+          expect(form.getAll("image")).toHaveLength(1);
+          return new Response(
+            JSON.stringify({ error: { message: "image[] is required" } }),
+            { status: 400 }
+          );
+        }
+
+        expect(form.getAll("image[]")).toHaveLength(1);
+        return new Response(
+          JSON.stringify({
+            data: [{ b64_json: Buffer.from("edited").toString("base64") }],
+          }),
+          { status: 200 }
+        );
+      }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callGptImage2({
+      config: { baseUrl: "https://api.example.com", model: "gpt-image-2" },
+      apiKey: "test-key",
+      prompt: "edit it",
+      settings,
+      inputAssets: [
+        {
+          id: "a1",
+          userId: "u1",
+          projectId: "p1",
+          type: "UPLOAD",
+          mime: "image/png",
+          width: null,
+          height: null,
+          storagePath: "u1/p1/source.png",
+          createdAt: new Date(),
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

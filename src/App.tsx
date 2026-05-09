@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Stage, Layer, Rect, Transformer } from "react-konva";
+import { Arrow, Stage, Layer, Rect, Transformer } from "react-konva";
 import { Toaster, toast } from "sonner";
 import {
   Hand,
@@ -15,12 +15,10 @@ import {
   Upload,
   FolderPlus,
 } from "lucide-react";
-import { motion } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CanvasImage } from "@/components/canvas/CanvasImage";
-import { LoadingSpinner } from "@/components/canvas/LoadingSpinner";
 import { ContextMenu } from "@/components/canvas/ContextMenu";
 import { SettingsDialog } from "@/components/workbench/SettingsDialog";
 import { useStage } from "@/hooks/useStage";
@@ -63,6 +61,13 @@ function serializeCanvasState(
     images: images.filter((image) => !image.isPlaceholder),
     stage,
   });
+}
+
+function imageCenter(image: CanvasProjectState["images"][number]) {
+  return {
+    x: image.x + image.width / 2,
+    y: image.y + image.height / 2,
+  };
 }
 
 export default function App({ initialUser }: AppProps) {
@@ -137,7 +142,7 @@ export default function App({ initialUser }: AppProps) {
     hideContextMenu,
   } = useCanvas(stageRef, stagePos, stageScale, images, setSelectedImages);
 
-  const { isGenerating, shouldBlur, callGenerateImage } = useGeneration(
+  const { isGenerating, callGenerateImage } = useGeneration(
     currentProjectId,
     setSettingsOpen,
     images,
@@ -145,6 +150,31 @@ export default function App({ initialUser }: AppProps) {
     getCurrentCenterPosition,
     settings
   );
+  const isEditingSelection = selectedImages.size > 0;
+  const promptPlaceholder = isEditingSelection
+    ? selectedImages.size === 1
+      ? "Edit the selected image: describe the change..."
+      : `Edit ${selectedImages.size} selected references: describe the change...`
+    : "What do you want to create?";
+  const relationshipLines = useMemo(() => {
+    const byId = new Map(images.map((image) => [image.id, image]));
+    return images.flatMap((target) =>
+      (target.inputImageIds || [])
+        .map((sourceId) => {
+          const source = byId.get(sourceId);
+          if (!source || source.id === target.id) return null;
+          const start = imageCenter(source);
+          const end = imageCenter(target);
+          return {
+            key: `${source.id}-${target.id}`,
+            points: [start.x, start.y, end.x, end.y],
+          };
+        })
+        .filter((line): line is { key: string; points: number[] } =>
+          Boolean(line)
+        )
+    );
+  }, [images]);
 
   const hydrateProject = useCallback(
     (project: ProjectSummary) => {
@@ -400,15 +430,9 @@ export default function App({ initialUser }: AppProps) {
         onChange={handleFileUpload}
       />
 
-      {isGenerating && <LoadingSpinner />}
-
       <div style={backgroundStyle} />
 
-      <motion.div
-        animate={{ filter: shouldBlur ? "blur(4px)" : "blur(0px)" }}
-        transition={{ duration: 0.3 }}
-        style={{ position: "relative", zIndex: 1 }}
-      >
+      <div style={{ position: "relative", zIndex: 1 }}>
         <Stage
           ref={stageRef}
           width={stageDimensions.width}
@@ -426,6 +450,23 @@ export default function App({ initialUser }: AppProps) {
           style={{ cursor: getCursor() }}
         >
           <Layer>
+            {relationshipLines.map((line) => (
+              <Arrow
+                key={line.key}
+                points={line.points}
+                stroke="#2563eb"
+                fill="#2563eb"
+                opacity={0.44}
+                strokeWidth={2 / stageScale}
+                pointerLength={12 / stageScale}
+                pointerWidth={10 / stageScale}
+                dash={[8 / stageScale, 10 / stageScale]}
+                lineCap="round"
+                lineJoin="round"
+                listening={false}
+              />
+            ))}
+
             {images.map((image) => (
               <CanvasImage
                 key={image.id}
@@ -469,7 +510,7 @@ export default function App({ initialUser }: AppProps) {
             )}
           </Layer>
         </Stage>
-      </motion.div>
+      </div>
 
       <aside className="fixed left-4 top-4 z-10 w-[252px] border border-neutral-200 bg-white shadow-sm">
         <div className="border-b border-neutral-200 p-3">
@@ -573,7 +614,7 @@ export default function App({ initialUser }: AppProps) {
             onKeyDown={handleKeyPress}
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
-            placeholder="What do you want to create?"
+            placeholder={promptPlaceholder}
             className="min-w-[360px] border-0 focus:ring-2"
             disabled={isGenerating || !currentProjectId}
           />

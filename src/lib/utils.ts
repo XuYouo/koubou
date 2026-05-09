@@ -25,17 +25,6 @@ export function createDotPattern() {
     return canvas.toDataURL();
 }
 
-export function makePlaceholderSVGDataUrl(w = 700, h = 700) {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}'>
-    <rect width='100%' height='100%' fill='#f3f4f6'/>
-    <circle cx='50%' cy='50%' r='30' fill='none' stroke='#9ca3af' stroke-width='4'>
-      <animate attributeName='stroke-dasharray' dur='2s' values='0 188;94 94;0 188' repeatCount='indefinite'/>
-      <animate attributeName='stroke-dashoffset' dur='2s' values='0;-94;-188' repeatCount='indefinite'/>
-    </circle>
-  </svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
 export function dataUrlToBase64AndMime(dataUrl: string) {
   const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
   if (!match) return null;

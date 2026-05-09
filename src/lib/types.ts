@@ -9,6 +9,7 @@ export type CanvasImageData = {
   isPlaceholder?: boolean;
   generationRequestId?: string;
   isGenerating?: boolean;
+  inputImageIds?: Array<string | number>;
 };
 
 export type SafeUser = {

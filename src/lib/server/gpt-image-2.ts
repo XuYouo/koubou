@@ -179,11 +179,13 @@ async function requestMultipart({
   apiKey,
   fields,
   images,
+  imageFieldName,
 }: {
   url: string;
   apiKey: string;
   fields: Record<string, string>;
   images: Asset[];
+  imageFieldName: "image" | "image[]";
 }) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
@@ -194,7 +196,7 @@ async function requestMultipart({
     const bytes = await readAssetBytes(image.storagePath);
     const extension = path.extname(image.storagePath) || ".png";
     const blob = new Blob([bytes], { type: image.mime });
-    form.append("image[]", blob, `image-${index + 1}${extension}`);
+    form.append(imageFieldName, blob, `image-${index + 1}${extension}`);
   }
 
   const response = await fetch(url, {
@@ -205,6 +207,13 @@ async function requestMultipart({
     body: form,
   });
   return parseJsonResponse(response);
+}
+
+function isImageFieldCompatibilityError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return /image.*(required|missing|file|array|invalid)|required.*image/i.test(
+    error.message
+  );
 }
 
 export async function callGptImage2({
@@ -226,12 +235,30 @@ export async function callGptImage2({
 
   const json =
     inputAssets.length > 0
-      ? await requestMultipart({
-          url: imageApiUrl(config.baseUrl, "edits"),
-          apiKey,
-          fields: payload,
-          images: inputAssets,
-        })
+      ? await (async () => {
+          const editUrl = imageApiUrl(config.baseUrl, "edits");
+          try {
+            return await requestMultipart({
+              url: editUrl,
+              apiKey,
+              fields: payload,
+              images: inputAssets,
+              imageFieldName: "image",
+            });
+          } catch (error) {
+            if (!isImageFieldCompatibilityError(error)) {
+              throw error;
+            }
+
+            return requestMultipart({
+              url: editUrl,
+              apiKey,
+              fields: payload,
+              images: inputAssets,
+              imageFieldName: "image[]",
+            });
+          }
+        })()
       : await requestJson({
           url: imageApiUrl(config.baseUrl, "generations"),
           apiKey,
