@@ -7,10 +7,12 @@ import { Toaster } from "sonner";
 import { ContextMenu } from "@/components/canvas/ContextMenu";
 import { CanvasBackground } from "@/components/workbench/CanvasBackground";
 import { DeleteProjectDialog } from "@/components/workbench/DeleteProjectDialog";
+import { ImageInspectorPanel } from "@/components/workbench/ImageInspectorPanel";
 import { ProjectActionMenu } from "@/components/workbench/ProjectActionMenu";
 import { ProjectSidebar } from "@/components/workbench/ProjectSidebar";
 import { PromptBar } from "@/components/workbench/PromptBar";
 import { SettingsDialog } from "@/components/workbench/SettingsDialog";
+import { UserGalleryPanel } from "@/components/workbench/UserGalleryPanel";
 import { WorkbenchCanvas } from "@/components/workbench/WorkbenchCanvas";
 import { WorkbenchToolbar } from "@/components/workbench/WorkbenchToolbar";
 import { useCanvas } from "@/hooks/useCanvas";
@@ -30,6 +32,7 @@ export default function App({ initialUser }: AppProps) {
   const router = useRouter();
   const [inputText, setInputText] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const stageRef = useRef<any>(null);
 
   const {
@@ -236,8 +239,16 @@ export default function App({ initialUser }: AppProps) {
         onCommitRename={(project) => void commitProjectRename(project)}
         onCancelRename={cancelProjectRename}
         onOpenContextMenu={openProjectContextMenu}
+        onOpenGallery={() => setGalleryOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
+
+      <UserGalleryPanel
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+      />
+
+      <ImageInspectorPanel images={images} selectedImages={selectedImages} />
 
       {contextMenu && (
         <ContextMenu

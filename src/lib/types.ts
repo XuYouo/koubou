@@ -35,6 +35,20 @@ export type AssetResponse = {
   height: number | null;
 };
 
+export type AssetMetadata = AssetResponse & {
+  type: "GENERATED" | "UPLOAD";
+  projectName: string;
+  createdAt: string;
+  prompt: string | null;
+  operation: "GENERATION" | "EDIT" | null;
+  generationCreatedAt: string | null;
+  generationSettings: {
+    size: string;
+    quality: string;
+    outputFormat: string;
+  } | null;
+};
+
 export type CanvasProjectState = {
   images: CanvasImageData[];
   stage?: {

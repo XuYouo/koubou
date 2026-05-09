@@ -1,6 +1,6 @@
 import Image from "next/image";
 import type { MouseEvent, RefObject } from "react";
-import { FolderPlus, Settings } from "lucide-react";
+import { FolderPlus, Images, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ type ProjectSidebarProps = {
     event: MouseEvent,
     project: ProjectSummary
   ) => void;
+  onOpenGallery: () => void;
   onOpenSettings: () => void;
 };
 
@@ -44,6 +45,7 @@ export function ProjectSidebar({
   onCommitRename,
   onCancelRename,
   onOpenContextMenu,
+  onOpenGallery,
   onOpenSettings,
 }: ProjectSidebarProps) {
   return (
@@ -64,6 +66,16 @@ export function ProjectSidebar({
             <p className="truncate text-xs text-neutral-500">{username}</p>
           </div>
         </div>
+      </div>
+      <div className="border-b border-neutral-200 p-2">
+        <button
+          type="button"
+          onClick={onOpenGallery}
+          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+        >
+          <Images className="h-4 w-4" />
+          Gallery
+        </button>
       </div>
       <div className="max-h-[42vh] overflow-y-auto p-2">
         <div className="mb-2 flex items-center justify-between px-1">
