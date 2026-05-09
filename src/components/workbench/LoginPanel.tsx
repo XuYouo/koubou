@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Lock, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,9 +44,14 @@ export function LoginPanel() {
         className="w-full max-w-sm border border-neutral-200 bg-white p-6 shadow-sm"
       >
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded bg-neutral-950 text-white">
-            <Lock className="h-5 w-5" />
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Koubou"
+            width={40}
+            height={40}
+            className="h-10 w-10 rounded object-cover"
+            priority
+          />
           <div>
             <h1 className="text-xl font-semibold tracking-normal">Koubou</h1>
             <p className="text-sm text-neutral-500">GPT-Image-2 workbench</p>
