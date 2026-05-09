@@ -35,6 +35,16 @@ export function LoginPanel() {
       return;
     }
 
+    const meResponse = await fetch("/api/auth/me", { cache: "no-store" });
+    const meBody = await meResponse.json().catch(() => null);
+    if (!meBody?.user) {
+      setError(
+        "Login succeeded, but the session cookie was not stored. Use HTTPS in production, or set SESSION_COOKIE_SECURE=false when serving over plain HTTP."
+      );
+      setLoading(false);
+      return;
+    }
+
     router.refresh();
   }
 

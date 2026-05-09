@@ -19,10 +19,19 @@ function cookieOptions(expires?: Date) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureSessionCookie(),
     path: "/",
     expires,
   };
+}
+
+function shouldUseSecureSessionCookie() {
+  const configured = process.env.SESSION_COOKIE_SECURE?.trim().toLowerCase();
+  if (configured) {
+    return !["0", "false", "no", "off"].includes(configured);
+  }
+
+  return process.env.NODE_ENV === "production";
 }
 
 export async function createSession(userId: string, response: NextResponse) {
