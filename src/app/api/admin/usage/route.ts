@@ -20,6 +20,11 @@ export async function GET() {
           createdAt: true,
         },
       },
+      _count: {
+        select: {
+          assets: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -45,7 +50,7 @@ export async function GET() {
         requests: total,
         succeeded,
         failed,
-        generatedImages: succeeded,
+        imageAssets: user._count.assets,
         lastUsedAt: latest ? new Date(latest).toISOString() : null,
       };
     }),

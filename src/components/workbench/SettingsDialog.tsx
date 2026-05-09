@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   BarChart3,
+  ExternalLink,
+  ImageIcon,
   KeyRound,
   LogOut,
   Settings,
@@ -53,8 +56,25 @@ type UsageRow = {
   requests: number;
   succeeded: number;
   failed: number;
-  generatedImages: number;
+  imageAssets: number;
   lastUsedAt: string | null;
+};
+
+type UsageGalleryUser = {
+  id: string;
+  username: string;
+  imageAssets: number;
+};
+
+type UsageAsset = {
+  id: string;
+  type: "GENERATED" | "UPLOAD";
+  url: string;
+  mime: string;
+  width: number | null;
+  height: number | null;
+  projectName: string;
+  createdAt: string;
 };
 
 type ModelConfigView = {
@@ -369,6 +389,12 @@ function UsersAdmin() {
 
 function UsageAdmin() {
   const [usage, setUsage] = useState<UsageRow[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UsageGalleryUser | null>(null);
+  const [assets, setAssets] = useState<UsageAsset[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryLoadingMore, setGalleryLoadingMore] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
 
   async function loadUsage() {
     const response = await fetch("/api/admin/usage");
@@ -379,6 +405,69 @@ function UsageAdmin() {
   useEffect(() => {
     void loadUsage();
   }, []);
+
+  async function loadUserAssets(userId: string, cursor: string | null = null) {
+    if (cursor) {
+      setGalleryLoadingMore(true);
+    } else {
+      setGalleryLoading(true);
+      setAssets([]);
+      setNextCursor(null);
+    }
+    setGalleryError(null);
+
+    const params = new URLSearchParams({ limit: "60" });
+    if (cursor) params.set("cursor", cursor);
+
+    const response = await fetch(
+      `/api/admin/users/${encodeURIComponent(userId)}/assets?${params}`
+    );
+    const body = await response.json().catch(() => null);
+
+    setGalleryLoading(false);
+    setGalleryLoadingMore(false);
+
+    if (!response.ok) {
+      setGalleryError(body?.error || "Failed to load image assets");
+      return;
+    }
+
+    const nextAssets = Array.isArray(body?.assets) ? body.assets : [];
+    setAssets((current) => (cursor ? [...current, ...nextAssets] : nextAssets));
+    setNextCursor(body?.nextCursor || null);
+  }
+
+  function openUserGallery(row: UsageRow) {
+    setSelectedUser({
+      id: row.userId,
+      username: row.username,
+      imageAssets: row.imageAssets,
+    });
+    void loadUserAssets(row.userId);
+  }
+
+  function closeUserGallery() {
+    setSelectedUser(null);
+    setAssets([]);
+    setNextCursor(null);
+    setGalleryError(null);
+  }
+
+  if (selectedUser) {
+    return (
+      <UsageAssetGallery
+        user={selectedUser}
+        assets={assets}
+        nextCursor={nextCursor}
+        loading={galleryLoading}
+        loadingMore={galleryLoadingMore}
+        error={galleryError}
+        onBack={closeUserGallery}
+        onLoadMore={() => void loadUserAssets(selectedUser.id, nextCursor)}
+        onRetry={() => void loadUserAssets(selectedUser.id)}
+      />
+    );
+  }
 
   return (
     <section className="space-y-6">
@@ -405,11 +494,19 @@ function UsageAdmin() {
           <tbody>
             {usage.map((row) => (
               <tr key={row.userId} className="border-t border-neutral-200">
-                <td className="px-3 py-2">{row.username}</td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => openUserGallery(row)}
+                    className="rounded-sm font-medium text-neutral-950 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:outline-none"
+                  >
+                    {row.username}
+                  </button>
+                </td>
                 <td className="px-3 py-2">{row.requests}</td>
                 <td className="px-3 py-2">{row.succeeded}</td>
                 <td className="px-3 py-2">{row.failed}</td>
-                <td className="px-3 py-2">{row.generatedImages}</td>
+                <td className="px-3 py-2">{row.imageAssets}</td>
                 <td className="px-3 py-2">
                   {row.lastUsedAt ? new Date(row.lastUsedAt).toLocaleString() : "-"}
                 </td>
@@ -420,6 +517,129 @@ function UsageAdmin() {
       </div>
     </section>
   );
+}
+
+function UsageAssetGallery({
+  user,
+  assets,
+  nextCursor,
+  loading,
+  loadingMore,
+  error,
+  onBack,
+  onLoadMore,
+  onRetry,
+}: {
+  user: UsageGalleryUser;
+  assets: UsageAsset[];
+  nextCursor: string | null;
+  loading: boolean;
+  loadingMore: boolean;
+  error: string | null;
+  onBack: () => void;
+  onLoadMore: () => void;
+  onRetry: () => void;
+}) {
+  const countLabel = loading
+    ? "Loading image assets..."
+    : user.imageAssets === assets.length
+      ? `${assets.length} image assets`
+      : `Showing ${assets.length} of ${user.imageAssets} image assets`;
+
+  return (
+    <section className="space-y-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Back to usage"
+            onClick={onBack}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h2 className="text-lg font-semibold">{user.username}</h2>
+            <p className="mt-1 text-sm text-neutral-500">{countLabel}</p>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center justify-between gap-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-44 animate-pulse rounded border border-neutral-200 bg-neutral-100"
+            />
+          ))}
+        </div>
+      ) : assets.length === 0 && !error ? (
+        <div className="flex min-h-64 flex-col items-center justify-center border border-dashed border-neutral-300 px-6 py-10 text-center">
+          <ImageIcon className="h-8 w-8 text-neutral-400" />
+          <h3 className="mt-3 text-sm font-medium text-neutral-950">
+            No image assets
+          </h3>
+          <p className="mt-1 text-sm text-neutral-500">
+            Generated outputs and uploaded references will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="columns-2 gap-3 md:columns-3">
+          {assets.map((asset) => (
+            <a
+              key={asset.id}
+              href={asset.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group mb-3 block break-inside-avoid overflow-hidden rounded border border-neutral-200 bg-white transition hover:border-neutral-300"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={asset.url}
+                alt={`${user.username} ${formatAssetType(asset.type)} image`}
+                loading="lazy"
+                className="w-full bg-neutral-100 object-cover transition group-hover:opacity-90"
+              />
+              <div className="space-y-2 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-neutral-600">
+                    {formatAssetType(asset.type)}
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 text-neutral-400" />
+                </div>
+                <div className="space-y-0.5 text-xs text-neutral-500">
+                  <p className="truncate text-neutral-700">{asset.projectName}</p>
+                  <p>{new Date(asset.createdAt).toLocaleString()}</p>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {nextCursor && !loading && (
+        <div className="flex justify-center pt-1">
+          <Button variant="outline" onClick={onLoadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading..." : "Load more"}
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatAssetType(type: UsageAsset["type"]) {
+  return type === "GENERATED" ? "Generated" : "Upload";
 }
 
 function ModelConfigAdmin() {
