@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ImageIcon } from "lucide-react";
+import { Copy, Download, ImageIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import type { AssetMetadata, CanvasImageData } from "@/lib/types";
 
@@ -110,7 +111,7 @@ export function ImageInspectorPanel({
       <div className="border-b border-neutral-200 p-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-950">
           <ImageIcon className="h-4 w-4" />
-          Selection
+          Info
         </h2>
         <p className="mt-1 text-xs text-neutral-500">
           {selectedCanvasImages.length === 1
@@ -153,6 +154,7 @@ function SelectedImageDetails({
   const resolution = formatResolution(canvasImage, metadata, dimensions);
   const createdAt = metadata?.generationCreatedAt || metadata?.createdAt || null;
   const type = metadata?.type ? formatAssetType(metadata.type) : "Canvas image";
+  const downloadName = getDownloadName(canvasImage, metadata);
   const generationSettings = metadata?.generationSettings
     ? [
         metadata.generationSettings.size,
@@ -182,13 +184,25 @@ function SelectedImageDetails({
 
         <div className="min-w-0 flex-1 space-y-1 text-xs">
           <div className="flex items-center justify-between gap-2">
-            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-neutral-600">
-              {type}
-            </span>
-            {metadata?.operation && (
-              <span className="text-[10px] text-neutral-500">
-                {formatOperation(metadata.operation)}
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-neutral-600">
+                {type}
               </span>
+              {metadata?.operation && (
+                <span className="truncate text-[10px] text-neutral-500">
+                  {formatOperation(metadata.operation)}
+                </span>
+              )}
+            </div>
+            {canvasImage.src && !canvasImage.isGenerating && (
+              <a
+                href={canvasImage.src}
+                download={downloadName}
+                aria-label="Download image"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
             )}
           </div>
           <InfoLine label="Resolution" value={resolution} />
@@ -196,9 +210,6 @@ function SelectedImageDetails({
             label="Created"
             value={createdAt ? new Date(createdAt).toLocaleString() : "-"}
           />
-          {metadata?.projectName && (
-            <InfoLine label="Project" value={metadata.projectName} />
-          )}
           {generationSettings && (
             <InfoLine label="Settings" value={generationSettings} />
           )}
@@ -210,13 +221,56 @@ function SelectedImageDetails({
           <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
             Prompt
           </p>
-          <p className="max-h-28 overflow-y-auto text-xs leading-5 text-neutral-700">
-            {metadata.prompt}
-          </p>
+          <button
+            type="button"
+            aria-label="Copy prompt text"
+            title="Copy prompt"
+            onClick={() => void copyPrompt(metadata.prompt || "")}
+            className="flex max-h-28 w-full cursor-copy items-start gap-2 overflow-y-auto rounded px-1 py-1 text-left text-xs leading-5 text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:outline-none"
+          >
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+              {metadata.prompt}
+            </span>
+            <Copy className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400" />
+          </button>
         </div>
       )}
     </section>
   );
+}
+
+async function copyPrompt(prompt: string) {
+  try {
+    await navigator.clipboard.writeText(prompt);
+    toast.success("Prompt copied");
+  } catch {
+    if (copyTextFallback(prompt)) {
+      toast.success("Prompt copied");
+      return;
+    }
+    toast.error("Failed to copy prompt");
+  }
+}
+
+function copyTextFallback(text: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+
+  return copied;
 }
 
 function InfoLine({ label, value }: { label: string; value: string }) {
@@ -239,6 +293,36 @@ function formatResolution(
   if (metadata?.width && metadata.height) return `${metadata.width} x ${metadata.height}`;
   if (canvasImage.isGenerating) return "Pending";
   return "Loading...";
+}
+
+function getDownloadName(
+  canvasImage: CanvasImageData,
+  metadata: AssetMetadata | null
+) {
+  const extension =
+    extensionFromMime(metadata?.mime) || extensionFromSrc(canvasImage.src);
+  const id = String(metadata?.id || canvasImage.id).replace(
+    /[^a-zA-Z0-9_-]/g,
+    "-"
+  );
+  return `koubou-${id}.${extension || "png"}`;
+}
+
+function extensionFromMime(mime?: string) {
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/gif") return "gif";
+  return null;
+}
+
+function extensionFromSrc(src: string) {
+  const dataUrlMatch = src.match(/^data:image\/([a-zA-Z0-9.+-]+);/);
+  if (dataUrlMatch?.[1]) {
+    return dataUrlMatch[1] === "jpeg" ? "jpg" : dataUrlMatch[1];
+  }
+
+  return null;
 }
 
 function formatAssetType(type: AssetMetadata["type"]) {
