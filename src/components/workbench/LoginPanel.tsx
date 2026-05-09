@@ -8,6 +8,7 @@ import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import backImage from "../../../back.png";
 
 export function LoginPanel() {
   const router = useRouter();
@@ -38,10 +39,15 @@ export function LoginPanel() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[#f7f7f4] px-6 text-neutral-950">
+    <main
+      className="grid min-h-screen place-items-center bg-neutral-950 bg-cover bg-center px-6 text-neutral-950"
+      style={{
+        backgroundImage: `linear-gradient(rgba(8, 8, 8, 0.34), rgba(8, 8, 8, 0.2)), url(${backImage.src})`,
+      }}
+    >
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm border border-neutral-200 bg-white p-6 shadow-sm"
+        className="w-full max-w-sm border border-white/55 bg-white/94 p-6 shadow-sm backdrop-blur-md"
       >
         <div className="mb-6 flex items-center gap-3">
           <Image
