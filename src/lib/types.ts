@@ -2,6 +2,7 @@ export type CanvasImageData = {
   id: string | number;
   assetId?: string;
   src: string;
+  createdAt?: string;
   x: number;
   y: number;
   width: number;

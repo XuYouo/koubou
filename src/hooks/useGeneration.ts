@@ -59,6 +59,7 @@ export function useGeneration(
       const placeholderImage: CanvasImageData = {
         id: placeholderId,
         src: "",
+        createdAt: new Date().toISOString(),
         x: placeholderPosition.x,
         y: placeholderPosition.y,
         width: placeholderSize,

@@ -38,6 +38,7 @@ export function useImages() {
             id: generateId("img"),
             assetId,
             src,
+            createdAt: new Date().toISOString(),
             x: center.x - width / 2 + stackOffset,
             y: center.y - height / 2 + stackOffset,
             width,
@@ -151,6 +152,7 @@ export function useImages() {
       const newImage: CanvasImageData = {
         ...copiedImage,
         id: generateId("img"),
+        createdAt: new Date().toISOString(),
         x: copiedImage.x + 20,
         y: copiedImage.y + 20,
       };

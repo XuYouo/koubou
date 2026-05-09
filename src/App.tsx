@@ -22,7 +22,7 @@ import { useGenerationSettings } from "@/hooks/useGenerationSettings";
 import { useImages } from "@/hooks/useImages";
 import { useProjectWorkspace } from "@/hooks/useProjectWorkspace";
 import { useStage } from "@/hooks/useStage";
-import type { SafeUser } from "@/lib/types";
+import type { ProjectSummary, SafeUser } from "@/lib/types";
 
 type AppProps = {
   initialUser: SafeUser;
@@ -162,6 +162,16 @@ export default function App({ initialUser }: AppProps) {
     closeProjectContextMenu();
   }, [closeProjectContextMenu, hideContextMenu]);
 
+  const handleProjectResourceSelect = useCallback(
+    (project: ProjectSummary, imageId: string | number) => {
+      if (currentProjectId !== project.id) {
+        hydrateProject(project);
+      }
+      setSelectedImages(new Set([imageId]));
+    },
+    [currentProjectId, hydrateProject, setSelectedImages]
+  );
+
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
@@ -227,6 +237,8 @@ export default function App({ initialUser }: AppProps) {
         username={initialUser.username}
         projects={projects}
         currentProjectId={currentProjectId}
+        currentProjectImages={images}
+        selectedImages={selectedImages}
         isLoadingProjects={isLoadingProjects}
         isSaving={isSaving}
         renamingProjectId={renamingProjectId}
@@ -239,6 +251,7 @@ export default function App({ initialUser }: AppProps) {
         onCommitRename={(project) => void commitProjectRename(project)}
         onCancelRename={cancelProjectRename}
         onOpenContextMenu={openProjectContextMenu}
+        onSelectResource={handleProjectResourceSelect}
         onOpenGallery={() => setGalleryOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
