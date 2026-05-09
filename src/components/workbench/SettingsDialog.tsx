@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  DEFAULT_IMAGE_SETTINGS,
   IMAGE_OUTPUT_FORMATS,
   IMAGE_QUALITIES,
   IMAGE_SIZES,
@@ -65,7 +64,6 @@ type ModelConfigView = {
   baseUrl: string;
   enabled: boolean;
   hasApiKey: boolean;
-  defaultOptions: ImageSettings;
   updatedAt: string;
 };
 
@@ -430,7 +428,6 @@ function ModelConfigAdmin() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(true);
-  const [defaultOptions, setDefaultOptions] = useState(DEFAULT_IMAGE_SETTINGS);
 
   const loadConfig = useCallback(async () => {
     const response = await fetch("/api/admin/model-config");
@@ -443,7 +440,7 @@ function ModelConfigAdmin() {
       setModel(nextConfig.model);
       setBaseUrl(nextConfig.baseUrl);
       setEnabled(nextConfig.enabled);
-      setDefaultOptions(nextConfig.defaultOptions);
+      setApiKey("");
     }
   }, []);
 
@@ -461,7 +458,6 @@ function ModelConfigAdmin() {
         baseUrl,
         apiKey,
         enabled,
-        defaultOptions,
       }),
     });
     const body = await response.json().catch(() => null);
@@ -509,50 +505,24 @@ function ModelConfigAdmin() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="api-key">
-            API key {config?.hasApiKey ? "(leave blank to keep current)" : ""}
+            API key
           </Label>
           <Input
             id="api-key"
             type="password"
+            placeholder={
+              config?.hasApiKey
+                ? "Configured - leave blank to keep current"
+                : "Paste API key"
+            }
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
           />
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-3">
-          <SelectSetting
-            label="Default size"
-            value={defaultOptions.size}
-            values={IMAGE_SIZES}
-            onValueChange={(value) =>
-              setDefaultOptions({
-                ...defaultOptions,
-                size: value as ImageSettings["size"],
-              })
-            }
-          />
-          <SelectSetting
-            label="Default quality"
-            value={defaultOptions.quality}
-            values={IMAGE_QUALITIES}
-            onValueChange={(value) =>
-              setDefaultOptions({
-                ...defaultOptions,
-                quality: value as ImageSettings["quality"],
-              })
-            }
-          />
-          <SelectSetting
-            label="Default format"
-            value={defaultOptions.outputFormat}
-            values={IMAGE_OUTPUT_FORMATS}
-            onValueChange={(value) =>
-              setDefaultOptions({
-                ...defaultOptions,
-                outputFormat: value as ImageSettings["outputFormat"],
-              })
-            }
-          />
+          {config?.hasApiKey && (
+            <p className="text-xs text-neutral-500">
+              A key is saved. Enter a new key only when you want to replace it.
+            </p>
+          )}
         </div>
 
         <Button type="submit">Save model config</Button>

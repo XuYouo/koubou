@@ -7,7 +7,6 @@ import {
 } from "@/lib/server/model-config";
 import { badRequest, readJson } from "@/lib/server/responses";
 import { requireAdmin } from "@/lib/server/session";
-import { normalizeImageSettings } from "@/lib/image-options";
 
 export async function GET() {
   const { response } = await requireAdmin();
@@ -34,17 +33,12 @@ export async function PUT(request: Request) {
   if (!model) return badRequest("Model is required");
   if (!baseUrl) return badRequest("Base URL is required");
 
-  const defaultOptions = JSON.stringify(
-    normalizeImageSettings(body?.defaultOptions || {})
-  );
-
   try {
     const config = await upsertModelConfig({
       model,
       baseUrl,
       apiKey,
       enabled,
-      defaultOptions,
     });
 
     return NextResponse.json({ config: toSafeModelConfig(config) });

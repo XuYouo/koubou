@@ -31,13 +31,11 @@ export async function upsertModelConfig({
   baseUrl,
   apiKey,
   enabled,
-  defaultOptions,
 }: {
   model: string;
   baseUrl: string;
   apiKey?: string;
   enabled: boolean;
-  defaultOptions: string;
 }) {
   const existing = await prisma.modelConfig.findFirst({
     orderBy: { createdAt: "asc" },
@@ -58,7 +56,8 @@ export async function upsertModelConfig({
     baseUrl,
     encryptedApiKey,
     enabled,
-    defaultOptions,
+    defaultOptions:
+      existing?.defaultOptions || JSON.stringify(DEFAULT_IMAGE_SETTINGS),
   };
 
   if (existing) {
